@@ -304,6 +304,10 @@ export default function Line({
 
   // Purely-instrumental lines (intro, coda, break…) — an editable sequence of
   // chords with no lyrics attached, so nothing to visually anchor them to.
+  if (line.type === 'chords' && mode === 'lyrics') {
+    return null
+  }
+
   if (line.type === 'chords') {
     return (
       <div

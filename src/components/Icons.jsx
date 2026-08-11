@@ -73,6 +73,21 @@ export function IconUpload(props) {
   )
 }
 
+export function IconSettings(props) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" {...props}>
+      <path
+        d="M21 13.25v-2.5l-2.07-.33a7 7 0 0 0-.66-1.6l1.27-1.74-1.77-1.77-1.74 1.27a7 7 0 0 0-1.6-.66L13.25 3h-2.5l-.33 2.07a7 7 0 0 0-1.6.66L7.08 4.46 5.31 6.23l1.27 1.74c-.3.52-.52 1.06-.66 1.6L3 10.75v2.5l2.07.33c.14.54.36 1.08.66 1.6L5.31 16.9l1.77 1.77 1.74-1.27c.52.3 1.06.52 1.6.66L10.75 21h2.5l.33-2.07c.54-.14 1.08-.36 1.6-.66l1.74 1.27 1.77-1.77-1.27-1.74c.3-.52.52-1.06.66-1.6Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  )
+}
+
 export function IconClose(props) {
   return (
     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" {...props}>

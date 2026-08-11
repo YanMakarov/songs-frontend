@@ -10,7 +10,6 @@ const VIEW_OPTIONS = [
 ]
 
 const ORIGINAL_KEY_LONG_PRESS_MS = 600
-
 export default function MetaBar({
   song,
   onChange,

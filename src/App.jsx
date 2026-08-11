@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom'
 import SongList from './components/SongList.jsx'
 import SongEditor from './components/SongEditor.jsx'
-import { loadTheme, saveTheme, loadViewMode, saveViewMode } from './lib/storage.js'
+import { loadTheme, saveTheme, loadViewMode, saveViewMode, loadTextScale, saveTextScale } from './lib/storage.js'
 import { applyTheme } from './lib/theme.js'
 import {
   ApiError,
@@ -21,6 +21,7 @@ export default function App() {
   const [songsError, setSongsError] = useState(null)
   const [theme, setTheme] = useState(loadTheme)
   const [viewMode, setViewMode] = useState(loadViewMode)
+  const [textScale, setTextScale] = useState(loadTextScale)
 
   useEffect(() => {
     applyTheme(theme)
@@ -30,6 +31,10 @@ export default function App() {
   useEffect(() => {
     saveViewMode(viewMode)
   }, [viewMode])
+
+  useEffect(() => {
+    saveTextScale(textScale)
+  }, [textScale])
 
   const fetchSongs = useCallback(async () => {
     setSongsLoading(true)
@@ -115,6 +120,8 @@ export default function App() {
             onViewModeChange={setViewMode}
             theme={theme}
             onThemeChange={setTheme}
+            textScale={textScale}
+            onTextScaleChange={setTextScale}
           />
         }
       />
@@ -171,7 +178,15 @@ function SongListRoute({ songs, loading, error, onReload, onCreate, onDelete, on
   )
 }
 
-function SongEditorRoute({ onSongMetadataChange, viewMode, onViewModeChange, theme, onThemeChange }) {
+function SongEditorRoute({
+  onSongMetadataChange,
+  viewMode,
+  onViewModeChange,
+  theme,
+  onThemeChange,
+  textScale,
+  onTextScaleChange,
+}) {
   const { songId } = useParams()
   const navigate = useNavigate()
   const [song, setSong] = useState(null)
@@ -349,6 +364,8 @@ function SongEditorRoute({ onSongMetadataChange, viewMode, onViewModeChange, the
         onBack={() => navigate('/songs')}
         theme={theme}
         onThemeChange={onThemeChange}
+        textScale={textScale}
+        onTextScaleChange={onTextScaleChange}
       />
       {saveError && (
         <div className="save-banner" role="status">

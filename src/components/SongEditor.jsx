@@ -1,19 +1,34 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import MetaBar from './MetaBar.jsx'
 import Line from './Line.jsx'
 import ChordPicker from './ChordPicker.jsx'
 import AddLineMenu from './AddLineMenu.jsx'
 import ChordContextMenu from './ChordContextMenu.jsx'
-import { IconChevronLeft, IconPlus, IconUpload } from './Icons.jsx'
+import { IconChevronLeft, IconPlus, IconSettings, IconUpload } from './Icons.jsx'
 import ThemeMenu from './ThemeMenu.jsx'
 import Tooltip from './Tooltip.jsx'
 import { transposeChord, transposeKey, parseKey, keySemitoneDelta } from '../lib/music.js'
 import { emptyLine, sectionLine, instrumentalLine, uid } from '../lib/storage.js'
 import { collapseRepeats } from '../lib/repeats.js'
+import EditorSettingsModal from './EditorSettingsModal.jsx'
+import { ApiError, importPdf } from '../lib/api.js'
 
 const LONG_PRESS_MS = 500
+const TEXT_SCALE_MIN = 0.85
+const TEXT_SCALE_MAX = 1.4
+const TEXT_SCALE_STEP = 0.05
 
-export default function SongEditor({ song, onChange, viewMode, onViewModeChange, onBack, theme, onThemeChange }) {
+export default function SongEditor({
+  song,
+  onChange,
+  viewMode,
+  onViewModeChange,
+  onBack,
+  theme,
+  onThemeChange,
+  textScale,
+  onTextScaleChange,
+}) {
   const [picker, setPicker] = useState(null)
   const [addMenu, setAddMenu] = useState(null)
   const [chordMenu, setChordMenu] = useState(null)
@@ -22,6 +37,7 @@ export default function SongEditor({ song, onChange, viewMode, onViewModeChange,
   const [importing, setImporting] = useState(false)
   const [focusedLineId, setFocusedLineId] = useState(null)
   const [confirmOriginalKey, setConfirmOriginalKey] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const measureRef = useRef(null)
   const canvasRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -36,15 +52,32 @@ export default function SongEditor({ song, onChange, viewMode, onViewModeChange,
   songRef.current = song
   onChangeRef.current = onChange
   charWidthRef.current = charWidth
+  const appliedTextScale = Number.isFinite(textScale) ? textScale : 1
   const originalKey = song.originalKey || song.key || 'C'
   const isTransposed = Boolean(song.key && song.key !== originalKey)
+  const scaleStyleVars = useMemo(() => {
+    const px = (value) => `${Number((value * appliedTextScale).toFixed(3))}px`
+    return {
+      '--song-scale': appliedTextScale,
+      '--song-title-size': px(22),
+      '--lyrics-font-size': px(15),
+      '--lyrics-line-height': px(22),
+      '--chord-chip-size': px(13),
+      '--chord-chip-line-height': px(18),
+      '--section-label-size': px(12.5),
+      '--section-input-size': px(13),
+      '--section-key-size': px(11.5),
+      '--chords-line-size': px(14),
+      '--instrumental-hint-size': px(13),
+    }
+  }, [appliedTextScale])
 
   useLayoutEffect(() => {
     if (measureRef.current) {
       const w = measureRef.current.getBoundingClientRect().width / 40
       if (w > 0) setCharWidth(w)
     }
-  }, [])
+  }, [appliedTextScale])
 
   // Persistent window-level listeners driving the chord drag gesture.
   useEffect(() => {
@@ -376,23 +409,21 @@ export default function SongEditor({ song, onChange, viewMode, onViewModeChange,
     if (!file) return
     setImporting(true)
     try {
-      const [{ extractPdfLines }, { parseSongDocument }] = await Promise.all([
-        import('../lib/pdfImport.js'),
-        import('../lib/pdfSongParser.js'),
-      ])
-      const rawLines = await extractPdfLines(file)
-      const parsed = parseSongDocument(rawLines)
-      if (parsed.lines.length) {
+      const parsed = await importPdf(file)
+      if (parsed?.lines?.length) {
         const patch = { lines: [...song.lines, ...parsed.lines] }
         if (parsed.title) patch.title = parsed.title
         if (parsed.bpm) patch.bpm = parsed.bpm
         if (parsed.timeSignature) patch.timeSignature = parsed.timeSignature
         if (parsed.primaryKey) patch.key = parsed.primaryKey
         onChange(patch)
+      } else {
+        alert('Не удалось разобрать PDF. Сервер вернул пустой результат.')
       }
     } catch (err) {
       console.error(err)
-      alert('Не удалось прочитать PDF. Убедитесь, что это текстовый (не сканированный) PDF-файл.')
+      const message = err instanceof ApiError ? err.message : 'Не удалось прочитать PDF. Попробуйте другой файл.'
+      alert(message)
     } finally {
       setImporting(false)
     }
@@ -441,7 +472,7 @@ export default function SongEditor({ song, onChange, viewMode, onViewModeChange,
   }
 
   return (
-    <div className="app">
+    <div className="app" style={scaleStyleVars}>
       <div className="topbar">
         <button className="back-btn" onClick={onBack}>
           <IconChevronLeft />
@@ -455,6 +486,11 @@ export default function SongEditor({ song, onChange, viewMode, onViewModeChange,
             </button>
           </Tooltip>
         )}
+        <Tooltip label="Настройки отображения">
+          <button className="icon-btn" onClick={() => setSettingsOpen(true)} aria-label="Настройки отображения">
+            <IconSettings />
+          </button>
+        </Tooltip>
         <input
           ref={fileInputRef}
           type="file"
@@ -482,7 +518,7 @@ export default function SongEditor({ song, onChange, viewMode, onViewModeChange,
           visibility: 'hidden',
           whiteSpace: 'pre',
           fontFamily: 'var(--font-mono)',
-          fontSize: 15,
+          fontSize: 15 * appliedTextScale,
         }}
       >
         {'M'.repeat(40)}
@@ -603,6 +639,16 @@ export default function SongEditor({ song, onChange, viewMode, onViewModeChange,
           </div>
         </div>
       )}
+
+      <EditorSettingsModal
+        open={settingsOpen}
+        textScale={appliedTextScale}
+        onTextScaleChange={onTextScaleChange}
+        onClose={() => setSettingsOpen(false)}
+        min={TEXT_SCALE_MIN}
+        max={TEXT_SCALE_MAX}
+        step={TEXT_SCALE_STEP}
+      />
     </div>
   )
 }

@@ -1,4 +1,6 @@
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(/\/$/, '')
+const rawBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000')
+const shouldUseProxy = import.meta.env.DEV && !import.meta.env.VITE_API_BASE_URL
+const API_BASE_URL = shouldUseProxy ? '' : rawBaseUrl.replace(/\/$/, '')
 const SETLIST_SLUG = import.meta.env.VITE_SETLIST_SLUG || 'setlist1'
 const SONGS_ENDPOINT = `/setlists/${SETLIST_SLUG}/songs`
 
@@ -10,14 +12,17 @@ export class ApiError extends Error {
   }
 }
 
-async function request(path, { method = 'GET', body } = {}) {
+async function request(path, { method = 'GET', body, headers = {} } = {}) {
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData
+  const mergedHeaders = {
+    Accept: 'application/json',
+    ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+    ...headers,
+  }
   const response = await fetch(`${API_BASE_URL}${path}`, {
     method,
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
-    body: body ? JSON.stringify(body) : undefined,
+    headers: mergedHeaders,
+    body: isFormData ? body : body ? JSON.stringify(body) : undefined,
   })
 
   if (!response.ok) {
@@ -72,6 +77,13 @@ export async function deleteSong(songId) {
 export async function reorderSongs(order) {
   if (!Array.isArray(order)) return
   await request(`${SONGS_ENDPOINT}/reorder`, { method: 'POST', body: { order } })
+}
+
+export async function importPdf(file) {
+  if (!file) return null
+  const formData = new FormData()
+  formData.append('file', file)
+  return request(`/pdf/import`, { method: 'POST', body: formData })
 }
 
 export { toSummary }
