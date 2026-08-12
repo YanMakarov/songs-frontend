@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { IconPlus, IconTrash } from './Icons.jsx'
 import ThemeMenu from './ThemeMenu.jsx'
 import Tooltip from './Tooltip.jsx'
@@ -20,12 +20,35 @@ export default function SongList({
   creating = false,
   onDelete,
   onReorder,
+  setlist,
+  onSetlistRename,
   theme,
   onThemeChange,
 }) {
   const [draggingId, setDraggingId] = useState(null)
   const [dropIndicator, setDropIndicator] = useState(null)
+  const [editingTitle, setEditingTitle] = useState(false)
+  const [titleDraft, setTitleDraft] = useState('')
+  const titleInputRef = useRef(null)
   const isInteractive = !loading && !error
+
+  useEffect(() => {
+    if (editingTitle) {
+      setTitleDraft(setlist?.name || '')
+      requestAnimationFrame(() => {
+        titleInputRef.current?.focus()
+        titleInputRef.current?.select()
+      })
+    }
+  }, [editingTitle, setlist])
+
+  function commitTitle() {
+    const trimmed = (titleDraft || '').trim()
+    setEditingTitle(false)
+    if (!trimmed) return
+    if (trimmed === (setlist?.name || '')) return
+    onSetlistRename?.(trimmed)
+  }
 
   function handleDragStart(event, songId) {
     if (!isInteractive) return
@@ -124,7 +147,33 @@ export default function SongList({
   return (
     <div className="app">
       <div className="topbar">
-        <div className="topbar-title">Set list</div>
+        {editingTitle ? (
+          <input
+            ref={titleInputRef}
+            className="topbar-title-input"
+            value={titleDraft}
+            placeholder="Название сетлиста"
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onBlur={commitTitle}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                commitTitle()
+              } else if (e.key === 'Escape') {
+                setEditingTitle(false)
+              }
+            }}
+          />
+        ) : (
+          <button
+            className="topbar-title"
+            type="button"
+            onClick={() => setEditingTitle(true)}
+            aria-label="Редактировать название сетлиста"
+          >
+            {setlist?.name || 'Set list'}
+          </button>
+        )}
         <ThemeMenu theme={theme} onChange={onThemeChange} />
       </div>
       {loading ? (

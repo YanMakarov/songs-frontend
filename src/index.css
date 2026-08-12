@@ -100,7 +100,29 @@ button { cursor: pointer; }
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  border: none;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  padding: 4px 6px;
+  margin: -4px -6px;
+  border-radius: var(--radius-s);
+  font-family: inherit;
+  cursor: text;
 }
+.topbar-title:active { background: var(--surface-2); }
+.topbar-title-input {
+  flex: 1;
+  font-size: 17px;
+  font-weight: 600;
+  border: none;
+  background: var(--surface-2);
+  color: var(--text);
+  padding: 4px 8px;
+  border-radius: var(--radius-s);
+  font-family: inherit;
+}
+.topbar-title-input:focus { outline: none; box-shadow: 0 0 0 2px var(--accent) inset; }
 .icon-btn {
   width: 34px;
   height: 34px;
@@ -555,6 +577,20 @@ button { cursor: pointer; }
   user-select: none;
 }
 .chord-chip:active { background: var(--chip-bg-hover); }
+.chord-chip.is-armed,
+.chords-only-row.editable .chord-token.is-armed {
+  animation: chord-wake 280ms ease, chord-blink 1.1s ease-in-out 280ms infinite;
+  z-index: 3;
+}
+@keyframes chord-wake {
+  0% { scale: 1; }
+  50% { scale: 1.18; }
+  100% { scale: 1; }
+}
+@keyframes chord-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
 
 .chord-drag-ghost {
   position: fixed;
@@ -833,8 +869,8 @@ button { cursor: pointer; }
 .chord-picker-input-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px;
+  gap: 8px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--border);
 }
 .chord-picker-input-row input {

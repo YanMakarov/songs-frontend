@@ -8,10 +8,12 @@ import {
   ApiError,
   createSong as apiCreateSong,
   deleteSong as apiDeleteSong,
+  getSetlist as apiGetSetlist,
   getSong as apiGetSong,
   listSongs as apiListSongs,
   reorderSongs as apiReorderSongs,
   toSummary as apiToSummary,
+  updateSetlist as apiUpdateSetlist,
   updateSong as apiUpdateSong,
 } from './lib/api.js'
 
@@ -19,6 +21,7 @@ export default function App() {
   const [songs, setSongs] = useState([])
   const [songsLoading, setSongsLoading] = useState(true)
   const [songsError, setSongsError] = useState(null)
+  const [setlist, setSetlist] = useState(null)
   const [theme, setTheme] = useState(loadTheme)
   const [viewMode, setViewMode] = useState(loadViewMode)
   const [textScale, setTextScale] = useState(loadTextScale)
@@ -39,8 +42,12 @@ export default function App() {
   const fetchSongs = useCallback(async () => {
     setSongsLoading(true)
     try {
-      const data = await apiListSongs()
-      setSongs(sortSongs(data))
+      const [data, setlistData] = await Promise.all([
+        apiListSongs(),
+        apiGetSetlist().catch(() => null),
+      ])
+      setSongs(sortSongs(Array.isArray(data) ? data : []))
+      if (setlistData) setSetlist(setlistData)
       setSongsError(null)
     } catch (err) {
       console.error(err)
@@ -92,6 +99,19 @@ export default function App() {
     [fetchSongs],
   )
 
+  const handleSetlistRename = useCallback(async (name) => {
+    const trimmed = (name || '').trim()
+    if (!trimmed) return
+    setSetlist((prev) => (prev ? { ...prev, name: trimmed } : prev))
+    try {
+      const updated = await apiUpdateSetlist({ name: trimmed })
+      if (updated) setSetlist(updated)
+    } catch (err) {
+      console.error(err)
+      fetchSongs()
+    }
+  }, [fetchSongs])
+
   return (
     <Routes>
       <Route path="/" element={<Navigate to="/songs" replace />} />
@@ -106,6 +126,8 @@ export default function App() {
             onCreate={handleCreate}
             onDelete={handleDelete}
             onReorder={handleReorderSong}
+            setlist={setlist}
+            onSetlistRename={handleSetlistRename}
             theme={theme}
             onThemeChange={setTheme}
           />
@@ -130,7 +152,7 @@ export default function App() {
   )
 }
 
-function SongListRoute({ songs, loading, error, onReload, onCreate, onDelete, onReorder, theme, onThemeChange }) {
+function SongListRoute({ songs, loading, error, onReload, onCreate, onDelete, onReorder, setlist, onSetlistRename, theme, onThemeChange }) {
   const navigate = useNavigate()
   const [creating, setCreating] = useState(false)
 
@@ -172,6 +194,8 @@ function SongListRoute({ songs, loading, error, onReload, onCreate, onDelete, on
       creating={creating}
       onDelete={handleDeleteSong}
       onReorder={onReorder}
+      setlist={setlist}
+      onSetlistRename={onSetlistRename}
       theme={theme}
       onThemeChange={onThemeChange}
     />

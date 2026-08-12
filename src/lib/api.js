@@ -2,6 +2,7 @@ const rawBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
 const shouldUseProxy = import.meta.env.DEV && !import.meta.env.VITE_API_BASE_URL
 const API_BASE_URL = shouldUseProxy ? '' : rawBaseUrl.replace(/\/$/, '')
 const SETLIST_SLUG = import.meta.env.VITE_SETLIST_SLUG || 'setlist1'
+const SETLIST_ENDPOINT = `/setlists/${SETLIST_SLUG}`
 const SONGS_ENDPOINT = `/setlists/${SETLIST_SLUG}/songs`
 
 export class ApiError extends Error {
@@ -52,6 +53,15 @@ function toSummary(song) {
 export async function listSongs() {
   const data = await request(`${SONGS_ENDPOINT}/`)
   return Array.isArray(data) ? data : []
+}
+
+export async function getSetlist() {
+  return request(SETLIST_ENDPOINT)
+}
+
+export async function updateSetlist(patch) {
+  if (!patch || typeof patch !== 'object') return getSetlist()
+  return request(SETLIST_ENDPOINT, { method: 'PATCH', body: patch })
 }
 
 export async function createSong(payload = {}) {

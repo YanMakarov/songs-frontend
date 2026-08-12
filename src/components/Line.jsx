@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react'
 import { IconClose, IconMusic } from './Icons.jsx'
 import Tooltip from './Tooltip.jsx'
 
-const DRAG_THRESHOLD = 6
+const DRAG_THRESHOLD = 4
+const ARM_DELAY_MS = 500
+const ARM_CANCEL_THRESHOLD = 10
 
 export default function Line({
   line,
@@ -25,6 +27,7 @@ export default function Line({
   const [draft, setDraft] = useState(fieldValue)
   const [editingKey, setEditingKey] = useState(false)
   const [keyDraft, setKeyDraft] = useState(line.key || '')
+  const [armedChordId, setArmedChordId] = useState(null)
   const inputRef = useRef(null)
   const keyInputRef = useRef(null)
   const chordsStripRef = useRef(null)
@@ -122,8 +125,11 @@ export default function Line({
     }
   }
 
-  // Pointer-based tap-vs-drag detection for a chord chip/token. A static
-  // long-press (no movement) opens the mini Edit/Delete menu instead.
+  // Long-press to "arm" a chord chip: it briefly grows, settles, and slowly
+  // blinks to signal it is now interactive. Only after arming can the user
+  // drag it (the page won't scroll during the drag). Releasing an armed chord
+  // without moving it opens the Edit/Delete menu. A quick tap does nothing so
+  // the gesture never fights page scrolling.
   function handleChordPointerDown(downEvent, chord) {
     downEvent.stopPropagation()
     if (downEvent.button != null && downEvent.button !== 0) return
@@ -131,50 +137,63 @@ export default function Line({
     const startY = downEvent.clientY
     const chordRect = downEvent.currentTarget?.getBoundingClientRect()
     const grabOffsetX = chordRect ? downEvent.clientX - chordRect.left : 0
+    let armed = false
     let dragging = false
-    let longPressDone = false
+    let canceled = false
 
     const holdTimer = setTimeout(() => {
-      longPressDone = true
+      if (canceled) return
+      armed = true
+      setArmedChordId(chord.id)
+    }, ARM_DELAY_MS)
+
+    function cleanup() {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
-      onChordMenu &&
-        onChordMenu({
-          lineId: line.id,
-          chordId: chord.id,
-          chordText: chord.chord,
-          anchor: { x: startX, y: startY },
-        })
-    }, 500)
+      window.removeEventListener('pointercancel', onCancel)
+    }
 
     function onMove(ev) {
-      if (dragging) return
       const dx = ev.clientX - startX
       const dy = ev.clientY - startY
-      if (Math.hypot(dx, dy) > DRAG_THRESHOLD) {
+      if (!armed) {
+        if (Math.hypot(dx, dy) > ARM_CANCEL_THRESHOLD) {
+          canceled = true
+          clearTimeout(holdTimer)
+          cleanup()
+        }
+        return
+      }
+      if (!dragging && Math.hypot(dx, dy) > DRAG_THRESHOLD) {
         dragging = true
-        clearTimeout(holdTimer)
-        window.removeEventListener('pointermove', onMove)
-        window.removeEventListener('pointerup', onUp)
+        setArmedChordId(null)
+        cleanup()
         onChordDragStart({ line, chord, clientX: ev.clientX, clientY: ev.clientY, grabOffsetX })
       }
     }
-    function onUp(ev) {
+    function onUp() {
       clearTimeout(holdTimer)
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-      if (!dragging && !longPressDone) {
-        onOpenPicker({
-          lineId: line.id,
-          mode: 'edit',
-          chordId: chord.id,
-          initialValue: chord.chord,
-          anchor: { x: ev.clientX, y: ev.clientY },
-        })
+      cleanup()
+      if (dragging) return
+      if (armed) {
+        setArmedChordId(null)
+        onChordMenu &&
+          onChordMenu({
+            lineId: line.id,
+            chordId: chord.id,
+            chordText: chord.chord,
+            anchor: { x: startX, y: startY },
+          })
       }
     }
+    function onCancel() {
+      clearTimeout(holdTimer)
+      setArmedChordId((cur) => (cur === chord.id ? null : cur))
+      cleanup()
+    }
     window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp, { once: true })
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
   }
 
   function handleChordContextMenu(e, chord) {
@@ -330,7 +349,7 @@ export default function Line({
               <span key={c.id}>
                 {i > 0 && <span className="sep">|</span>}
                 <span
-                  className="chord-token"
+                  className={'chord-token' + (armedChordId === c.id ? ' is-armed' : '')}
                   style={draggingChordId === c.id ? { opacity: 0.25 } : undefined}
                   onPointerDown={(e) => handleChordPointerDown(e, c)}
                   onClick={(e) => e.stopPropagation()}
@@ -365,7 +384,7 @@ export default function Line({
             {sortedChords.map((c) => (
               <span
                 key={c.id}
-                className="chord-chip"
+                className={'chord-chip' + (armedChordId === c.id ? ' is-armed' : '')}
                 style={{ left: c.position * charWidth, opacity: draggingChordId === c.id ? 0.25 : 1 }}
                 onPointerDown={(e) => handleChordPointerDown(e, c)}
                 onClick={(e) => e.stopPropagation()}
