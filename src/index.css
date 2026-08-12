@@ -875,6 +875,7 @@ button { cursor: pointer; }
 }
 .chord-picker-input-row input {
   flex: 1;
+  min-width: 0;
   border: none;
   background: var(--surface-2);
   border-radius: var(--radius-s);

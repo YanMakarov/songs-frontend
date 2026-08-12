@@ -28,6 +28,8 @@ export default function Line({
   const [editingKey, setEditingKey] = useState(false)
   const [keyDraft, setKeyDraft] = useState(line.key || '')
   const [armedChordId, setArmedChordId] = useState(null)
+  const chordGestureRef = useRef(false)
+  const gestureEndedAtRef = useRef(0)
   const inputRef = useRef(null)
   const keyInputRef = useRef(null)
   const chordsStripRef = useRef(null)
@@ -133,6 +135,7 @@ export default function Line({
   function handleChordPointerDown(downEvent, chord) {
     downEvent.stopPropagation()
     if (downEvent.button != null && downEvent.button !== 0) return
+    chordGestureRef.current = true
     const startX = downEvent.clientX
     const startY = downEvent.clientY
     const chordRect = downEvent.currentTarget?.getBoundingClientRect()
@@ -148,6 +151,8 @@ export default function Line({
     }, ARM_DELAY_MS)
 
     function cleanup() {
+      chordGestureRef.current = false
+      gestureEndedAtRef.current = Date.now()
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
       window.removeEventListener('pointercancel', onCancel)
@@ -199,6 +204,11 @@ export default function Line({
   function handleChordContextMenu(e, chord) {
     e.preventDefault()
     e.stopPropagation()
+    // On touch, a long press fires a synthetic contextmenu while the finger
+    // is still down (or right after release). Ignore it — the pointer gesture
+    // opens the menu on release. Only a real desktop right-click (no recent
+    // gesture) opens here.
+    if (chordGestureRef.current || Date.now() - gestureEndedAtRef.current < 400) return
     onChordMenu &&
       onChordMenu({
         lineId: line.id,
