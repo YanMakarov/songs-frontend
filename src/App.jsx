@@ -4,6 +4,7 @@ import SongList from './components/SongList.jsx'
 import SongEditor from './components/SongEditor.jsx'
 import { loadTheme, saveTheme, loadViewMode, saveViewMode, loadTextScale, saveTextScale } from './lib/storage.js'
 import { applyTheme } from './lib/theme.js'
+import { UNDO_TIMEOUT_MS } from './lib/undo.js'
 import {
   ApiError,
   createSong as apiCreateSong,
@@ -22,9 +23,16 @@ export default function App() {
   const [songsLoading, setSongsLoading] = useState(true)
   const [songsError, setSongsError] = useState(null)
   const [setlist, setSetlist] = useState(null)
+  const [pendingDelete, setPendingDelete] = useState(null)
   const [theme, setTheme] = useState(loadTheme)
   const [viewMode, setViewMode] = useState(loadViewMode)
   const [textScale, setTextScale] = useState(loadTextScale)
+  const songsRef = useRef(songs)
+  const pendingDeleteRef = useRef(null)
+
+  useEffect(() => {
+    songsRef.current = songs
+  }, [songs])
 
   useEffect(() => {
     applyTheme(theme)
@@ -74,9 +82,61 @@ export default function App() {
     return created.id
   }, [handleSongMetadataChange])
 
-  const handleDelete = useCallback(async (id) => {
-    await apiDeleteSong(id)
-    setSongs((prev) => prev.filter((s) => s.id !== id))
+  const commitDelete = useCallback(
+    (id) => {
+      apiDeleteSong(id).catch((err) => {
+        console.error(err)
+        fetchSongs()
+      })
+    },
+    [fetchSongs],
+  )
+
+  const handleDelete = useCallback(
+    (id) => {
+      const prev = songsRef.current
+      const index = prev.findIndex((s) => s.id === id)
+      if (index === -1) return
+      const song = prev[index]
+      if (pendingDeleteRef.current) {
+        clearTimeout(pendingDeleteRef.current.timer)
+      }
+      const expiresAt = Date.now() + UNDO_TIMEOUT_MS
+      const timer = setTimeout(() => {
+        pendingDeleteRef.current = null
+        setPendingDelete(null)
+        commitDelete(id)
+      }, UNDO_TIMEOUT_MS)
+      const entry = { id, song, index, expiresAt, timer }
+      pendingDeleteRef.current = entry
+      setPendingDelete({ id, song, index, expiresAt })
+      setSongs((cur) => cur.filter((s) => s.id !== id))
+    },
+    [commitDelete],
+  )
+
+  const handleUndoDelete = useCallback(() => {
+    const pending = pendingDeleteRef.current
+    if (!pending) return
+    clearTimeout(pending.timer)
+    pendingDeleteRef.current = null
+    setPendingDelete(null)
+    setSongs((cur) => {
+      if (cur.some((s) => s.id === pending.song.id)) return cur
+      const next = [...cur]
+      const insertIndex = Math.min(pending.index, next.length)
+      next.splice(insertIndex, 0, pending.song)
+      return sortSongs(next)
+    })
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (pendingDeleteRef.current) {
+        clearTimeout(pendingDeleteRef.current.timer)
+        pendingDeleteRef.current = null
+      }
+    }
   }, [])
 
   const handleReorderSong = useCallback(
@@ -125,6 +185,8 @@ export default function App() {
             onReload={fetchSongs}
             onCreate={handleCreate}
             onDelete={handleDelete}
+            onUndoDelete={handleUndoDelete}
+            pendingDelete={pendingDelete}
             onReorder={handleReorderSong}
             setlist={setlist}
             onSetlistRename={handleSetlistRename}
@@ -152,7 +214,21 @@ export default function App() {
   )
 }
 
-function SongListRoute({ songs, loading, error, onReload, onCreate, onDelete, onReorder, setlist, onSetlistRename, theme, onThemeChange }) {
+function SongListRoute({
+  songs,
+  loading,
+  error,
+  onReload,
+  onCreate,
+  onDelete,
+  onUndoDelete,
+  pendingDelete,
+  onReorder,
+  setlist,
+  onSetlistRename,
+  theme,
+  onThemeChange,
+}) {
   const navigate = useNavigate()
   const [creating, setCreating] = useState(false)
 
@@ -193,6 +269,8 @@ function SongListRoute({ songs, loading, error, onReload, onCreate, onDelete, on
       onCreate={handleCreateAndOpen}
       creating={creating}
       onDelete={handleDeleteSong}
+      onUndoDelete={onUndoDelete}
+      pendingDelete={pendingDelete}
       onReorder={onReorder}
       setlist={setlist}
       onSetlistRename={onSetlistRename}

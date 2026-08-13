@@ -134,6 +134,21 @@ export function IconMusic(props) {
   )
 }
 
+export function IconGrip(props) {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden {...props}>
+      <g fill="currentColor">
+        <circle cx="9" cy="5" r="1.6" />
+        <circle cx="9" cy="12" r="1.6" />
+        <circle cx="9" cy="19" r="1.6" />
+        <circle cx="15" cy="5" r="1.6" />
+        <circle cx="15" cy="12" r="1.6" />
+        <circle cx="15" cy="19" r="1.6" />
+      </g>
+    </svg>
+  )
+}
+
 export function IconEdit(props) {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" {...props}>
@@ -144,6 +159,43 @@ export function IconEdit(props) {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
+    </svg>
+  )
+}
+
+export function IconPageBreak(props) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" {...props}>
+      <rect x="4" y="3" width="16" height="18" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M4 12h16" stroke="currentColor" strokeWidth="1.8" strokeDasharray="3 3" />
+    </svg>
+  )
+}
+
+export function IconDownload(props) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" {...props}>
+      <path
+        d="M12 3v12m0 0 4-4m-4 4-4-4M5 17v2a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+export function IconEye(props) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" {...props}>
+      <path
+        d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" />
     </svg>
   )
 }

@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { IconClose, IconMusic } from './Icons.jsx'
+import { IconClose, IconMusic, IconPageBreak } from './Icons.jsx'
 import Tooltip from './Tooltip.jsx'
 
 const DRAG_THRESHOLD = 4
-const ARM_DELAY_MS = 500
+const ARM_DELAY_MS = 150
 const ARM_CANCEL_THRESHOLD = 10
+const DBL_CLICK_MS = 320
 
 export default function Line({
   line,
@@ -22,6 +23,7 @@ export default function Line({
   onChordMenu,
 }) {
   const isSection = line.type === 'section'
+  const isPageBreak = line.type === 'pagebreak'
   const fieldValue = isSection ? line.label : line.lyrics
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(fieldValue)
@@ -30,6 +32,7 @@ export default function Line({
   const [armedChordId, setArmedChordId] = useState(null)
   const chordGestureRef = useRef(false)
   const gestureEndedAtRef = useRef(0)
+  const lastDesktopClickAtRef = useRef(0)
   const inputRef = useRef(null)
   const keyInputRef = useRef(null)
   const chordsStripRef = useRef(null)
@@ -127,75 +130,129 @@ export default function Line({
     }
   }
 
-  // Long-press to "arm" a chord chip: it briefly grows, settles, and slowly
-  // blinks to signal it is now interactive. Only after arming can the user
-  // drag it (the page won't scroll during the drag). Releasing an armed chord
-  // without moving it opens the Edit/Delete menu. A quick tap does nothing so
-  // the gesture never fights page scrolling.
+  // Two interaction models split by pointer type:
+  //  - Touch: a quick tap does nothing (so the page can scroll and the chord
+  //    never flies away). Holding ~150ms "arms" the chord (it blinks, page
+  //    scroll is locked via a body-level lock). Moving an armed chord drags it;
+  //    releasing it without moving opens the Edit/Delete menu.
+  //  - Mouse: drag starts immediately on movement (as before); a double-click
+  //    opens the edit picker directly; right-click opens the context menu
+  //    (handled in handleChordContextMenu). No long-press behavior.
   function handleChordPointerDown(downEvent, chord) {
     downEvent.stopPropagation()
     if (downEvent.button != null && downEvent.button !== 0) return
+    const isTouch = downEvent.pointerType === 'touch'
     chordGestureRef.current = true
+    const chipEl = downEvent.currentTarget
+    const pointerId = downEvent.pointerId
     const startX = downEvent.clientX
     const startY = downEvent.clientY
-    const chordRect = downEvent.currentTarget?.getBoundingClientRect()
+    const chordRect = chipEl?.getBoundingClientRect()
     const grabOffsetX = chordRect ? downEvent.clientX - chordRect.left : 0
-    let armed = false
     let dragging = false
+    let armed = false
     let canceled = false
+    let holdTimer = null
 
-    const holdTimer = setTimeout(() => {
-      if (canceled) return
+    // Lock the pointer to the chip for the entire touch so the browser keeps
+    // delivering pointer events (no pointercancel from scrolling/system
+    // gestures). Auto-released on pointerup/pointercancel.
+    if (isTouch && chipEl && typeof chipEl.setPointerCapture === 'function') {
+      try {
+        chipEl.setPointerCapture(pointerId)
+      } catch {
+        // ignore — capture is best-effort
+      }
+    }
+
+    function arm() {
       armed = true
       setArmedChordId(chord.id)
-    }, ARM_DELAY_MS)
+    }
+    function disarm() {
+      setArmedChordId((cur) => (cur === chord.id ? null : cur))
+    }
+
+    if (isTouch) {
+      holdTimer = setTimeout(() => {
+        if (canceled) return
+        arm()
+      }, ARM_DELAY_MS)
+    }
 
     function cleanup() {
       chordGestureRef.current = false
       gestureEndedAtRef.current = Date.now()
+      if (holdTimer) clearTimeout(holdTimer)
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
       window.removeEventListener('pointercancel', onCancel)
     }
 
+    function openEdit(c, x, y) {
+      onOpenPicker &&
+        onOpenPicker({
+          lineId: line.id,
+          mode: 'edit',
+          chordId: c.id,
+          initialValue: c.chord,
+          anchor: { x, y },
+        })
+    }
+
+    function openMenu(c, x, y) {
+      onChordMenu &&
+        onChordMenu({
+          lineId: line.id,
+          chordId: c.id,
+          chordText: c.chord,
+          anchor: { x, y },
+        })
+    }
+
     function onMove(ev) {
       const dx = ev.clientX - startX
       const dy = ev.clientY - startY
-      if (!armed) {
+      if (isTouch && !armed) {
         if (Math.hypot(dx, dy) > ARM_CANCEL_THRESHOLD) {
           canceled = true
-          clearTimeout(holdTimer)
           cleanup()
         }
         return
       }
       if (!dragging && Math.hypot(dx, dy) > DRAG_THRESHOLD) {
         dragging = true
-        setArmedChordId(null)
+        if (armed) disarm()
         cleanup()
         onChordDragStart({ line, chord, clientX: ev.clientX, clientY: ev.clientY, grabOffsetX })
       }
     }
-    function onUp() {
-      clearTimeout(holdTimer)
+
+    function onUp(ev) {
       cleanup()
       if (dragging) return
-      if (armed) {
-        setArmedChordId(null)
-        onChordMenu &&
-          onChordMenu({
-            lineId: line.id,
-            chordId: chord.id,
-            chordText: chord.chord,
-            anchor: { x: startX, y: startY },
-          })
+      if (isTouch) {
+        if (armed) {
+          disarm()
+          openMenu(chord, ev.clientX, ev.clientY)
+        }
+        return
+      }
+      // Desktop: double-click opens the edit picker.
+      const now = Date.now()
+      if (now - lastDesktopClickAtRef.current < DBL_CLICK_MS) {
+        lastDesktopClickAtRef.current = 0
+        openEdit(chord, ev.clientX, ev.clientY)
+      } else {
+        lastDesktopClickAtRef.current = now
       }
     }
+
     function onCancel() {
-      clearTimeout(holdTimer)
-      setArmedChordId((cur) => (cur === chord.id ? null : cur))
       cleanup()
+      disarm()
     }
+
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
     window.addEventListener('pointercancel', onCancel)
@@ -233,6 +290,35 @@ export default function Line({
           <IconClose />
         </button>
       </Tooltip>
+    )
+  }
+
+  // Page break — a non-content divider that forces a new PDF page. Renders
+  // identically in every view mode; only editable to the extent that it can
+  // be deleted or dragged around like any other line.
+  if (isPageBreak) {
+    const readOnly = mode === 'chordsOnly'
+    return (
+      <div
+        className={'line-row pagebreak-row' + (isFocused ? ' is-focused' : '')}
+        data-line-id={line.id}
+        data-line-type="pagebreak"
+        data-line-mode={mode}
+        onClickCapture={readOnly ? undefined : handleRowClickCapture}
+        onPointerDown={readOnly ? undefined : handleRowPointerDown}
+        onPointerUp={readOnly ? undefined : cancelRowPress}
+        onPointerLeave={readOnly ? undefined : cancelRowPress}
+        onPointerCancel={readOnly ? undefined : cancelRowPress}
+        onContextMenu={readOnly ? undefined : handleRowContextMenu}
+      >
+        <div className="line-content pagebreak-content">
+          <span className="pagebreak-line" />
+          <IconPageBreak className="pagebreak-icon" />
+          <span className="pagebreak-label">Разрыв страницы</span>
+          <span className="pagebreak-line" />
+        </div>
+        {!readOnly && renderDeleteButton('Удалить разрыв страницы')}
+      </div>
     )
   }
 

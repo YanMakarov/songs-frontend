@@ -22,6 +22,11 @@ export function instrumentalLine() {
   return { id: uid(), type: 'chords', chords: [] }
 }
 
+// Explicit page break — forces the following content onto a new PDF page.
+export function pagebreakLine() {
+  return { id: uid(), type: 'pagebreak', chords: [] }
+}
+
 export function loadTheme() {
   const v = localStorage.getItem(THEME_KEY)
   return v === 'light' || v === 'dark' || v === 'system' ? v : 'system'

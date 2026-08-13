@@ -4,19 +4,29 @@ import Line from './Line.jsx'
 import ChordPicker from './ChordPicker.jsx'
 import AddLineMenu from './AddLineMenu.jsx'
 import ChordContextMenu from './ChordContextMenu.jsx'
-import { IconChevronLeft, IconPlus, IconSettings, IconUpload } from './Icons.jsx'
+import { IconChevronLeft, IconPlus, IconSettings, IconUpload, IconEye } from './Icons.jsx'
 import ThemeMenu from './ThemeMenu.jsx'
 import Tooltip from './Tooltip.jsx'
 import { transposeChord, transposeKey, parseKey, keySemitoneDelta } from '../lib/music.js'
-import { emptyLine, sectionLine, instrumentalLine, uid } from '../lib/storage.js'
+import { emptyLine, sectionLine, instrumentalLine, pagebreakLine, uid } from '../lib/storage.js'
 import { collapseRepeats } from '../lib/repeats.js'
 import EditorSettingsModal from './EditorSettingsModal.jsx'
+import PrintPreview from './PrintPreview.jsx'
 import { ApiError, importPdf } from '../lib/api.js'
+import { UNDO_TIMEOUT_MS } from '../lib/undo.js'
+import UndoBanner from './UndoBanner.jsx'
 
 const LONG_PRESS_MS = 500
 const TEXT_SCALE_MIN = 0.85
 const TEXT_SCALE_MAX = 1.4
 const TEXT_SCALE_STEP = 0.05
+
+function isPristineEmptyLine(line) {
+  if (!line || line.type !== 'line') return false
+  const hasLyrics = typeof line.lyrics === 'string' && line.lyrics.trim().length > 0
+  const hasChords = Array.isArray(line.chords) && line.chords.length > 0
+  return !hasLyrics && !hasChords
+}
 
 export default function SongEditor({
   song,
@@ -38,6 +48,8 @@ export default function SongEditor({
   const [focusedLineId, setFocusedLineId] = useState(null)
   const [confirmOriginalKey, setConfirmOriginalKey] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [printPreview, setPrintPreview] = useState(false)
+  const [pendingLineDelete, setPendingLineDelete] = useState(null)
   const measureRef = useRef(null)
   const canvasRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -49,6 +61,7 @@ export default function SongEditor({
   const songRef = useRef(song)
   const onChangeRef = useRef(onChange)
   const charWidthRef = useRef(charWidth)
+  const pendingLineDeleteRef = useRef(null)
   songRef.current = song
   onChangeRef.current = onChange
   charWidthRef.current = charWidth
@@ -93,11 +106,18 @@ export default function SongEditor({
       setDrag(null)
       suppressNextClick()
     }
+    function onCancel() {
+      if (!dragRef.current) return
+      dragRef.current = null
+      setDrag(null)
+    }
     window.addEventListener('pointermove', onMove, { passive: false })
     window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
     return () => {
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onCancel)
     }
   }, [])
 
@@ -137,6 +157,15 @@ export default function SongEditor({
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [confirmOriginalKey])
+
+  useEffect(() => {
+    return () => {
+      if (pendingLineDeleteRef.current) {
+        clearTimeout(pendingLineDeleteRef.current.timer)
+        pendingLineDeleteRef.current = null
+      }
+    }
+  }, [])
 
   function suppressNextClick() {
     suppressClickRef.current = true
@@ -223,9 +252,41 @@ export default function SongEditor({
   }
 
   function deleteLine(lineId) {
-    const lines = song.lines.filter((l) => l.id !== lineId)
-    onChange({ lines: lines.length ? lines : [emptyLine()] })
+    const idx = song.lines.findIndex((l) => l.id === lineId)
+    if (idx === -1) return
+    const line = song.lines[idx]
+    if (pendingLineDeleteRef.current) {
+      clearTimeout(pendingLineDeleteRef.current.timer)
+    }
+    const remaining = song.lines.filter((l) => l.id !== lineId)
+    const wasLast = remaining.length === 0
+    const lines = remaining.length ? remaining : [emptyLine()]
+    onChange({ lines })
     if (focusedLineId === lineId) setFocusedLineId(null)
+    const expiresAt = Date.now() + UNDO_TIMEOUT_MS
+    const timer = setTimeout(() => {
+      pendingLineDeleteRef.current = null
+      setPendingLineDelete(null)
+    }, UNDO_TIMEOUT_MS)
+    pendingLineDeleteRef.current = { line, index: idx, expiresAt, timer, wasLast }
+    setPendingLineDelete({ line, index: idx, expiresAt, wasLast })
+  }
+
+  function undoLineDelete() {
+    const pending = pendingLineDeleteRef.current
+    if (!pending) return
+    clearTimeout(pending.timer)
+    pendingLineDeleteRef.current = null
+    setPendingLineDelete(null)
+    const current = songRef.current.lines
+    if (current.some((l) => l.id === pending.line.id)) return
+    let lines = [...current]
+    if (pending.wasLast && lines.length === 1 && isPristineEmptyLine(lines[0])) {
+      lines = []
+    }
+    const insertIndex = Math.min(pending.index, lines.length)
+    lines.splice(insertIndex, 0, pending.line)
+    onChangeRef.current({ lines })
   }
 
   function addLineAt(index, newLine) {
@@ -271,7 +332,14 @@ export default function SongEditor({
 
   function commitAddMenu(type) {
     if (!addMenu) return
-    const newLine = type === 'section' ? sectionLine('') : type === 'chords' ? instrumentalLine() : emptyLine()
+    const newLine =
+      type === 'section'
+        ? sectionLine('')
+        : type === 'chords'
+          ? instrumentalLine()
+          : type === 'pagebreak'
+            ? pagebreakLine()
+            : emptyLine()
     addLineAt(addMenu.insertAt, newLine)
     setFocusedLineId(newLine.id)
     setAddMenu(null)
@@ -372,6 +440,12 @@ export default function SongEditor({
     openAddMenu(x, y, idx === -1 ? song.lines.length : idx + 1)
   }
 
+  // Long-press / right-click on the meta bar: insert a new line at the very
+  // top (before the first line).
+  function handleRequestInsertTop(x, y) {
+    openAddMenu(x, y, 0)
+  }
+
   // Long-press / right-click on a chord chip: mini Edit/Delete menu.
   function handleChordMenuRequest(info) {
     setChordMenu(info)
@@ -431,7 +505,7 @@ export default function SongEditor({
 
   const groups =
     viewMode === 'chords'
-      ? collapseRepeats(song.lines.filter((l) => l.type === 'section' || l.chords.length > 0))
+      ? collapseRepeats(song.lines.filter((l) => l.type === 'section' || l.type === 'pagebreak' || l.chords.length > 0))
       : null
   const lineMode = viewMode === 'chords' ? 'chordsOnly' : viewMode === 'lyrics' ? 'lyrics' : 'both'
   const readOnlyChords = viewMode === 'chords'
@@ -491,6 +565,15 @@ export default function SongEditor({
             <IconSettings />
           </button>
         </Tooltip>
+        <Tooltip label="Предпросмотр PDF">
+          <button
+            className="icon-btn"
+            onClick={() => setPrintPreview(true)}
+            aria-label="Предпросмотр PDF"
+          >
+            <IconEye />
+          </button>
+        </Tooltip>
         <input
           ref={fileInputRef}
           type="file"
@@ -509,6 +592,7 @@ export default function SongEditor({
         onViewModeChange={onViewModeChange}
         onRequestOriginalKeyReset={handleRequestOriginalKeyReset}
         onResetOriginalKey={handleResetKeyToOriginal}
+        onRequestInsertTop={readOnlyChords ? undefined : handleRequestInsertTop}
       />
 
       <span
@@ -525,16 +609,6 @@ export default function SongEditor({
       </span>
 
       <div className="canvas" ref={canvasRef}>
-        {!readOnlyChords && (
-          <button
-            className="canvas-top-area"
-            onClick={(e) => openAddMenu(e.clientX, e.clientY, 0)}
-            aria-label="Добавить строку сверху"
-          >
-            <IconPlus /> Добавить сверху
-          </button>
-        )}
-
         {viewMode === 'chords' && !hasAnyChords && (
           <div className="canvas-hint">В этой песне пока нет аккордов</div>
         )}
@@ -556,7 +630,9 @@ export default function SongEditor({
             onPointerCancel={cancelPress}
           >
             <div className="canvas-hint">
-              {importing ? 'Импорт PDF…' : 'Двойной клик или долгое нажатие — новая строка'}
+              {importing
+                ? 'Импорт PDF…'
+                : 'Двойной клик по аккорду — изменить · двойной клик или долгое нажатие — новая строка'}
             </div>
           </div>
         )}
@@ -649,6 +725,25 @@ export default function SongEditor({
         max={TEXT_SCALE_MAX}
         step={TEXT_SCALE_STEP}
       />
+
+      {pendingLineDelete && (
+        <UndoBanner
+          message="Строка удалена"
+          expiresAt={pendingLineDelete.expiresAt}
+          onUndo={undoLineDelete}
+        />
+      )}
+
+      {printPreview && (
+        <PrintPreview
+          song={song}
+          viewMode={viewMode}
+          appliedTextScale={appliedTextScale}
+          onChange={onChange}
+          onClose={() => setPrintPreview(false)}
+          onDownload={() => window.print()}
+        />
+      )}
     </div>
   )
 }

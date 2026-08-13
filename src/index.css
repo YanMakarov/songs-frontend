@@ -201,7 +201,7 @@ button { cursor: pointer; }
 .song-card {
   background: var(--surface);
   border-radius: var(--radius-m);
-  padding: 14px 16px;
+  padding: 14px 16px 14px 8px;
   box-shadow: var(--shadow-card);
   display: flex;
   align-items: center;
@@ -209,7 +209,7 @@ button { cursor: pointer; }
   gap: 12px;
   transition: transform 100ms ease, background 100ms ease;
   position: relative;
-  cursor: grab;
+  cursor: pointer;
   user-select: none;
 }
 .song-card:active { transform: scale(0.985); background: var(--surface-2); }
@@ -217,6 +217,30 @@ button { cursor: pointer; }
   opacity: 0.4;
   cursor: grabbing;
   transform: scale(0.98);
+}
+.song-card-handle {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 44px;
+  margin-right: 2px;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  border-radius: var(--radius-m);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.song-card-handle:active { cursor: grabbing; color: var(--text-secondary); background: var(--surface-2); }
+.song-card-ghost {
+  opacity: 0.92;
+  box-shadow: 0 10px 24px rgba(0,0,0,0.22);
+  transform: rotate(-1.2deg) scale(1.01);
+  pointer-events: none;
 }
 .song-card.drop-before::before,
 .song-card.drop-after::after {
@@ -350,6 +374,41 @@ button { cursor: pointer; }
   color: #fff;
 }
 .save-banner button:active { transform: scale(0.95); }
+
+.undo-banner {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-card);
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 60;
+  max-width: min(420px, calc(100vw - 32px));
+}
+.undo-banner-text {
+  font-size: 14px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.undo-banner button {
+  border: none;
+  border-radius: var(--radius-s);
+  padding: 6px 12px;
+  font-weight: 600;
+  font-size: 14px;
+  background: var(--accent);
+  color: #fff;
+  white-space: nowrap;
+}
+.undo-banner button:active { transform: scale(0.95); }
 
 /* Meta bar (song header) --------------------------------------------------*/
 .meta-bar {
@@ -577,9 +636,22 @@ button { cursor: pointer; }
   user-select: none;
 }
 .chord-chip:active { background: var(--chip-bg-hover); }
+
+/* Larger invisible hit area for chord chips on touch devices */
+@media (pointer: coarse) {
+  .chord-chip,
+  .chords-only-row.editable .chord-token {
+    /* extend the tappable box without changing visual size */
+    margin: -6px -4px;
+    padding: 7px 10px;
+  }
+  .chord-chip {
+    top: -6px;
+  }
+}
 .chord-chip.is-armed,
 .chords-only-row.editable .chord-token.is-armed {
-  animation: chord-wake 280ms ease, chord-blink 1.1s ease-in-out 280ms infinite;
+  animation: chord-wake 280ms ease, chord-blink 0.55s ease-in-out 280ms infinite;
   z-index: 3;
 }
 @keyframes chord-wake {
@@ -589,23 +661,24 @@ button { cursor: pointer; }
 }
 @keyframes chord-blink {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
+  50% { opacity: 0.3; }
 }
 
 .chord-drag-ghost {
   position: fixed;
   z-index: 60;
-  transform: translate(-50%, -50%) scale(1.08);
+  transform: translate(-50%, -50%) scale(1.35);
   background: var(--chip-bg-hover);
   color: var(--chip-text);
   font-family: var(--font-mono);
   font-weight: 700;
-  font-size: var(--chord-chip-size);
-  padding: 2px 8px;
-  border-radius: 7px;
+  font-size: calc(var(--chord-chip-size) * 1.1);
+  padding: 4px 12px;
+  border-radius: 8px;
   white-space: nowrap;
   pointer-events: none;
   box-shadow: var(--shadow-pop);
+  animation: chord-blink 0.55s ease-in-out infinite;
 }
 
 .line-row.drop-target {
@@ -1065,3 +1138,285 @@ button { cursor: pointer; }
   background: var(--accent);
   color: #fff;
 }
+.confirm-modal-actions .danger-btn {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* Page break line (editor) ---------------------------------------------- */
+.pagebreak-row {
+  --pagebreak-color: var(--text-tertiary);
+  min-height: 36px;
+}
+.pagebreak-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 0;
+  color: var(--pagebreak-color);
+}
+.pagebreak-line {
+  flex: 1;
+  height: 0;
+  border-top: 2px dashed var(--pagebreak-color);
+  opacity: 0.6;
+}
+.pagebreak-icon { flex: 0 0 auto; }
+.pagebreak-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* Print / PDF preview ---------------------------------------------------- */
+.print-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  background: #525659;
+  color: #1c1c1e;
+}
+.print-preview-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: #2b2b2d;
+  color: #f2f2f7;
+  flex: 0 0 auto;
+}
+.print-preview-toolbar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 14px;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+.print-preview-toolbar .ghost-btn {
+  background: transparent;
+  color: #d7d7db;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+.print-preview-toolbar .accent-btn {
+  background: var(--accent);
+  color: #fff;
+}
+.print-preview-title {
+  flex: 1;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 600;
+  color: #f2f2f7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.print-preview-hint {
+  flex: 0 0 auto;
+  padding: 8px 16px;
+  text-align: center;
+  font-size: 13px;
+  color: #d7d7db;
+  background: #2b2b2d;
+}
+.print-preview-scroll {
+  flex: 1;
+  overflow: auto;
+  padding: 24px 16px 64px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.pdf-measure-char {
+  position: absolute;
+  visibility: hidden;
+  white-space: pre;
+  font-family: var(--font-mono);
+}
+
+/* Single continuous printable sheet (no pagination) */
+.pdf-sheet {
+  width: 210mm;
+  padding: 14mm 16mm;
+  background: #fff;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+  color: #1c1c1e;
+  font-family: var(--font-ui);
+  display: flex;
+  flex-direction: column;
+}
+
+.pdf-header {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #1c1c1e;
+  padding-bottom: 5px;
+  margin-bottom: 10px;
+}
+.pdf-title {
+  font-family: var(--font-ui);
+  font-size: var(--pdf-section-size, 13px);
+  font-weight: 700;
+  line-height: 1.3;
+}
+.pdf-meta {
+  font-size: calc(var(--pdf-chord-size, 13px) * 0.85);
+  color: #555;
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.pdf-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pdf-section {
+  margin-top: 8px;
+  margin-bottom: 2px;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.pdf-section-label {
+  font-size: var(--pdf-section-size, 13px);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.pdf-section-key {
+  font-size: calc(var(--pdf-section-size, 13px) * 0.88);
+  font-family: var(--font-mono);
+  color: #555;
+}
+.pdf-chords-only {
+  font-family: var(--font-mono);
+  font-size: var(--pdf-chord-size, 13px);
+  line-height: 1.5;
+}
+.pdf-chords-only .sep { color: #c7c7cc; margin: 0 6px; }
+.pdf-chords-only .chord-token { color: #0a66e0; font-weight: 600; }
+.pdf-empty { color: #8a8a8e; font-style: italic; }
+
+.pdf-line {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 0;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.pdf-chord-row {
+  position: relative;
+  height: calc(var(--pdf-chord-size, 13px) * 1.38);
+  font-family: var(--font-mono);
+  font-size: var(--pdf-chord-size, 13px);
+  line-height: calc(var(--pdf-chord-size, 13px) * 1.38);
+  color: #0a66e0;
+  font-weight: 600;
+}
+.pdf-chord {
+  position: absolute;
+  top: 0;
+  white-space: pre;
+}
+.pdf-lyrics {
+  font-family: var(--font-mono);
+  font-size: var(--pdf-lyrics-size, 15px);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  min-height: 1.5em;
+}
+
+.pdf-item {
+  position: relative;
+  padding-right: 36px;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.pdf-item-controls {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+}
+.pdf-item:hover .pdf-item-controls,
+.pdf-item:focus-within .pdf-item-controls {
+  opacity: 1;
+  pointer-events: auto;
+}
+.pdf-item-btn {
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 1px solid #d2d2d7;
+  border-radius: 6px;
+  background: #fff;
+  color: #6e6e73;
+  cursor: pointer;
+}
+.pdf-item-btn:hover {
+  background: #f0f0f5;
+  color: #1c1c1e;
+  border-color: #8a8a8e;
+}
+
+/* Actual print: show only the sheet, hide chrome. */
+@media print {
+  @page { margin: 0; }
+  html, body { background: #fff; }
+  .app {
+    max-width: none;
+    margin: 0;
+    min-height: 0;
+    background: #fff;
+  }
+  .topbar,
+  .meta-bar,
+  .canvas,
+  .fab,
+  .no-print,
+  .print-preview-hint { display: none !important; }
+  .print-preview {
+    position: static;
+    inset: auto;
+    background: #fff;
+  }
+  .print-preview-toolbar { display: none !important; }
+  .print-preview-scroll {
+    display: block;
+    overflow: visible;
+    padding: 0;
+  }
+  .pdf-sheet {
+    width: auto;
+    min-height: auto;
+    margin: 0;
+    padding: 12mm 14mm;
+    box-shadow: none;
+  }
+}
+

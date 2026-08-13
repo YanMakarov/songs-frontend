@@ -10,6 +10,7 @@ const VIEW_OPTIONS = [
 ]
 
 const ORIGINAL_KEY_LONG_PRESS_MS = 600
+const INSERT_TOP_LONG_PRESS_MS = 500
 export default function MetaBar({
   song,
   onChange,
@@ -18,11 +19,15 @@ export default function MetaBar({
   onViewModeChange,
   onRequestOriginalKeyReset,
   onResetOriginalKey,
+  onRequestInsertTop,
 }) {
   const keyPressTimer = useRef(null)
+  const insertPressTimer = useRef(null)
+  const insertLongPressFired = useRef(false)
   const hasOriginalMismatch = Boolean(song.originalKey && song.key && song.originalKey !== song.key)
   const canRequestOriginalReset = hasOriginalMismatch && typeof onRequestOriginalKeyReset === 'function'
   const canResetOriginalKey = hasOriginalMismatch && typeof onResetOriginalKey === 'function'
+  const canInsertTop = typeof onRequestInsertTop === 'function'
 
   function clearKeyPressTimer() {
     if (keyPressTimer.current) {
@@ -34,6 +39,7 @@ export default function MetaBar({
   function handleKeyPointerDown(e) {
     if (!canRequestOriginalReset) return
     if (e.pointerType === 'mouse' && e.button !== 0) return
+    e.stopPropagation()
     clearKeyPressTimer()
     keyPressTimer.current = setTimeout(() => {
       keyPressTimer.current = null
@@ -41,13 +47,16 @@ export default function MetaBar({
     }, ORIGINAL_KEY_LONG_PRESS_MS)
   }
 
-  function handleKeyPointerEnd() {
+  function handleKeyPointerEnd(e) {
+    if (!canRequestOriginalReset) return
+    e.stopPropagation()
     clearKeyPressTimer()
   }
 
   function handleKeyContextMenu(e) {
     if (!canRequestOriginalReset) return
     e.preventDefault()
+    e.stopPropagation()
     clearKeyPressTimer()
     onRequestOriginalKeyReset()
   }
@@ -57,8 +66,64 @@ export default function MetaBar({
     onResetOriginalKey()
   }
 
+  function clearInsertTimer() {
+    if (insertPressTimer.current) {
+      clearTimeout(insertPressTimer.current)
+      insertPressTimer.current = null
+    }
+  }
+
+  function handleInsertPointerDown(e) {
+    if (!canInsertTop) return
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    insertLongPressFired.current = false
+    clearInsertTimer()
+    insertPressTimer.current = setTimeout(() => {
+      insertPressTimer.current = null
+      insertLongPressFired.current = true
+      onRequestInsertTop(e.clientX, e.clientY)
+    }, INSERT_TOP_LONG_PRESS_MS)
+  }
+
+  function handleInsertPointerEnd() {
+    clearInsertTimer()
+  }
+
+  function handleInsertDoubleClick(e) {
+    if (!canInsertTop) return
+    if (insertLongPressFired.current) {
+      insertLongPressFired.current = false
+      return
+    }
+    clearInsertTimer()
+    onRequestInsertTop(e.clientX, e.clientY)
+  }
+
+  function handleInsertContextMenu(e) {
+    if (!canInsertTop) return
+    e.preventDefault()
+    clearInsertTimer()
+    onRequestInsertTop(e.clientX, e.clientY)
+  }
+
+  function handleInsertClickCapture(e) {
+    if (insertLongPressFired.current) {
+      insertLongPressFired.current = false
+      e.stopPropagation()
+    }
+  }
+
   return (
-    <div className="meta-bar">
+    <div
+      className="meta-bar"
+      onClickCapture={canInsertTop ? handleInsertClickCapture : undefined}
+      onPointerDown={canInsertTop ? handleInsertPointerDown : undefined}
+      onPointerUp={canInsertTop ? handleInsertPointerEnd : undefined}
+      onPointerLeave={canInsertTop ? handleInsertPointerEnd : undefined}
+      onPointerCancel={canInsertTop ? handleInsertPointerEnd : undefined}
+      onDoubleClick={canInsertTop ? handleInsertDoubleClick : undefined}
+      onContextMenu={canInsertTop ? handleInsertContextMenu : undefined}
+    >
       <input
         className="title-input"
         value={song.title}
