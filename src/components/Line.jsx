@@ -9,6 +9,13 @@ const ARM_CANCEL_THRESHOLD = 10
 const DBL_CLICK_MS = 320
 const DBL_TAP_MS = 320
 
+// Whether the primary pointer is coarse (touch). Hints and the click-to-add
+// shortcut are adapted for touch via this flag; desktop is left untouched.
+const isCoarsePointer =
+  typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia('(pointer: coarse)').matches
+    : false
+
 // Map a chord string to its root semitone (0-11), for color-coding. Returns
 // null for unparseable chords (no color applied).
 function chordSemitone(chord) {
@@ -55,6 +62,7 @@ export default function Line({
   const chordGestureRef = useRef(false)
   const gestureEndedAtRef = useRef(0)
   const lastDesktopClickAtRef = useRef(0)
+  const lastPointerTypeRef = useRef('mouse')
   const inputRef = useRef(null)
   const keyInputRef = useRef(null)
   const repeatInputRef = useRef(null)
@@ -127,34 +135,96 @@ export default function Line({
     return Math.max(lyricsLength, widthColumns, chordExtent)
   }
 
-  function handleStripBackgroundClick(e, computePosition) {
-    const position = computePosition(e)
+  function openAddPicker(clientX, clientY, computePosition) {
+    const position = computePosition(clientX)
     onOpenPicker({
       lineId: line.id,
       mode: 'add',
       position,
-      anchor: { x: e.clientX, y: e.clientY },
+      anchor: { x: clientX, y: clientY },
     })
   }
 
+  function stripPosition(clientX) {
+    const rect = chordsStripRef.current.getBoundingClientRect()
+    const x = clientX - rect.left
+    const maxColumns = maxChordColumns()
+    return Math.max(0, Math.min(maxColumns, Math.round(x / charWidth)))
+  }
+
+  function nextInstrumentalPosition() {
+    return line.chords.length ? Math.max(...line.chords.map((c) => c.position)) + 1 : 0
+  }
+
+  // Desktop keeps click-to-add a chord. On touch a quick tap must not open the
+  // picker (adding a chord on mobile is a long-press — see below).
   function handleChordsStripClick(e) {
-    handleStripBackgroundClick(e, (ev) => {
-      const rect = chordsStripRef.current.getBoundingClientRect()
-      const x = ev.clientX - rect.left
-      const maxColumns = maxChordColumns()
-      return Math.max(0, Math.min(maxColumns, Math.round(x / charWidth)))
-    })
+    if (lastPointerTypeRef.current === 'touch') return
+    openAddPicker(e.clientX, e.clientY, stripPosition)
   }
 
   function handleInstrumentalBgClick(e) {
-    const nextPos = line.chords.length ? Math.max(...line.chords.map((c) => c.position)) + 1 : 0
-    handleStripBackgroundClick(e, () => nextPos)
+    if (lastPointerTypeRef.current === 'touch') return
+    openAddPicker(e.clientX, e.clientY, nextInstrumentalPosition)
   }
+
+  // Touch-only long-press on a chord strip / instrumental background to add a
+  // new chord — the same hold duration used to "arm" a chord for editing, so
+  // the gesture feels consistent. Quick taps fall through to the row's
+  // double-tap (add line); the synthesized click is blocked by the touch
+  // check in the click handlers above.
+  function makeAddLongPressHandler(computePosition) {
+    return (downEvent) => {
+      if (downEvent.pointerType !== 'touch') return
+      // Presses on chord chips/tokens and the drag handle have their own
+      // gestures; leave them alone.
+      if (downEvent.target.closest?.('.chord-chip, .chord-token, .line-drag-handle')) return
+      lastPointerTypeRef.current = 'touch'
+      const startX = downEvent.clientX
+      const startY = downEvent.clientY
+      let canceled = false
+      let fired = false
+      let holdTimer = null
+      const cleanup = () => {
+        if (holdTimer) clearTimeout(holdTimer)
+        if (fired) {
+          chordGestureRef.current = false
+          gestureEndedAtRef.current = Date.now()
+        }
+        window.removeEventListener('pointermove', onMove)
+        window.removeEventListener('pointerup', onUp)
+        window.removeEventListener('pointercancel', onCancel)
+      }
+      const onMove = (ev) => {
+        if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > ARM_CANCEL_THRESHOLD) {
+          canceled = true
+          cleanup()
+        }
+      }
+      const onUp = () => cleanup()
+      const onCancel = () => cleanup()
+      holdTimer = setTimeout(() => {
+        if (canceled) return
+        fired = true
+        // Claim the row gesture so the synthesized contextmenu / pointerup
+        // don't double-open the add-line menu.
+        chordGestureRef.current = true
+        openAddPicker(startX, startY, computePosition)
+      }, ARM_DELAY_MS)
+      window.addEventListener('pointermove', onMove)
+      window.addEventListener('pointerup', onUp)
+      window.addEventListener('pointercancel', onCancel)
+    }
+  }
+
+  const handleStripAddLongPress = makeAddLongPressHandler(stripPosition)
+  const handleInstrumentalAddLongPress = makeAddLongPressHandler(nextInstrumentalPosition)
 
   // Long-press or right-click anywhere on the row opens the same "add line"
   // menu as the FAB, pre-targeted to insert right after this line. On touch the
   // menu is opened by a double-tap instead of a long press.
   function handleRowPointerDown(e) {
+    lastPointerTypeRef.current = e.pointerType
     if (e.button != null && e.button !== 0) return
     if (isEditableTarget(e)) return
     rowLongPressFired.current = false
@@ -189,6 +259,11 @@ export default function Line({
   function handleRowContextMenu(e) {
     if (isEditableTarget(e)) return
     e.preventDefault()
+    // On touch, a long press fires a synthetic contextmenu while the finger
+    // is still down (or right after release). The pointer gesture (strip
+    // long-press to add a chord, or the row double-tap) opens its own menu,
+    // so ignore the synthetic event — but still suppress the native callout.
+    if (chordGestureRef.current || Date.now() - gestureEndedAtRef.current < 400) return
     onRequestLineMenu && onRequestLineMenu(line.id, e.clientX, e.clientY)
   }
   function handleRowClickCapture(e) {
@@ -543,14 +618,22 @@ export default function Line({
         onContextMenu={handleRowContextMenu}
       >
         <div className="line-content">
-          <div className="chords-only-row editable" onClick={handleInstrumentalBgClick}>
+          <div
+            className="chords-only-row editable"
+            onClick={handleInstrumentalBgClick}
+            onPointerDown={handleInstrumentalAddLongPress}
+          >
             <IconGrip
               className="line-drag-handle"
               onPointerDown={handleLineDragPointerDown}
               onClick={(e) => e.stopPropagation()}
             />
             <IconMusic className="instrumental-icon" />
-            {sortedChords.length === 0 && <span className="instrumental-hint">Проигрыш — нажмите, чтобы добавить аккорд</span>}
+            {sortedChords.length === 0 && (
+              <span className="instrumental-hint">
+                {isCoarsePointer ? 'Проигрыш — долгое нажатие, чтобы добавить аккорд' : 'Проигрыш — нажмите, чтобы добавить аккорд'}
+              </span>
+            )}
             {sortedChords.map((c, i) => (
               <span key={c.id}>
                 {i > 0 && <span className="sep">|</span>}
@@ -641,7 +724,12 @@ export default function Line({
     >
       <div className="line-content">
         {mode === 'both' && (
-          <div className="chords-strip" ref={chordsStripRef} onClick={handleChordsStripClick}>
+          <div
+            className="chords-strip"
+            ref={chordsStripRef}
+            onClick={handleChordsStripClick}
+            onPointerDown={handleStripAddLongPress}
+          >
             {sortedChords.map((c) => (
               <span
                 key={c.id}

@@ -17,6 +17,14 @@ import UndoBanner from './UndoBanner.jsx'
 
 const LONG_PRESS_MS = 500
 const DBL_TAP_MS = 320
+
+// Whether the primary pointer is coarse (touch). Used only to tailor the
+// on-canvas hint text to the gestures available on mobile; desktop behavior
+// and hints are unchanged.
+const isCoarsePointer =
+  typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia('(pointer: coarse)').matches
+    : false
 function isPristineEmptyLine(line) {
   if (!line || line.type !== 'line') return false
   const hasLyrics = typeof line.lyrics === 'string' && line.lyrics.trim().length > 0
@@ -832,7 +840,9 @@ export default function SongEditor({
             <div className="canvas-hint">
               {importing
                 ? 'Импорт PDF…'
-                : 'Двойной клик по аккорду — изменить · двойной клик / двойной тап — новая строка'}
+                : isCoarsePointer
+                  ? 'Долгое нажатие по аккорду — изменить · долгое нажатие по строке — добавить аккорд · двойной тап — новая строка'
+                  : 'Клик по строке — добавить аккорд · двойной клик по аккорду — изменить'}
             </div>
           </div>
         )}
