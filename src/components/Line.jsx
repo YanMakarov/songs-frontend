@@ -1,11 +1,29 @@
 import { useEffect, useRef, useState } from 'react'
-import { IconClose, IconMusic, IconPageBreak } from './Icons.jsx'
+import { IconClose, IconMusic, IconPageBreak, IconGrip } from './Icons.jsx'
 import Tooltip from './Tooltip.jsx'
+import { parseChord, noteToSemitone } from '../lib/music.js'
 
 const DRAG_THRESHOLD = 4
 const ARM_DELAY_MS = 150
 const ARM_CANCEL_THRESHOLD = 10
 const DBL_CLICK_MS = 320
+const DBL_TAP_MS = 320
+
+// Map a chord string to its root semitone (0-11), for color-coding. Returns
+// null for unparseable chords (no color applied).
+function chordSemitone(chord) {
+  const { root } = parseChord(chord)
+  if (root == null) return null
+  return noteToSemitone(root)
+}
+
+// A tap/long-press that lands inside a text field should preserve the native
+// selection + copy/paste menu, so the row's custom context menu and long-press
+// handlers must ignore such targets.
+function isEditableTarget(e) {
+  const el = e.target
+  return !!(el && el.closest && el.closest('input, textarea, select, [contenteditable="true"]'))
+}
 
 export default function Line({
   line,
@@ -21,6 +39,8 @@ export default function Line({
   onChordDragStart,
   onRequestLineMenu,
   onChordMenu,
+  onLineDragStart,
+  draggingLineId,
 }) {
   const isSection = line.type === 'section'
   const isPageBreak = line.type === 'pagebreak'
@@ -29,15 +49,19 @@ export default function Line({
   const [draft, setDraft] = useState(fieldValue)
   const [editingKey, setEditingKey] = useState(false)
   const [keyDraft, setKeyDraft] = useState(line.key || '')
+  const [editingRepeat, setEditingRepeat] = useState(false)
+  const [repeatDraft, setRepeatDraft] = useState('')
   const [armedChordId, setArmedChordId] = useState(null)
   const chordGestureRef = useRef(false)
   const gestureEndedAtRef = useRef(0)
   const lastDesktopClickAtRef = useRef(0)
   const inputRef = useRef(null)
   const keyInputRef = useRef(null)
+  const repeatInputRef = useRef(null)
   const chordsStripRef = useRef(null)
   const rowPressTimer = useRef(null)
   const rowLongPressFired = useRef(false)
+  const rowLastTapAtRef = useRef(0)
   const sortedChords = [...line.chords].sort((a, b) => a.position - b.position)
 
   useEffect(() => {
@@ -55,6 +79,30 @@ export default function Line({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingKey])
+
+  useEffect(() => {
+    if (editingRepeat) {
+      setRepeatDraft(line.repeatCount ? String(line.repeatCount) : '')
+      requestAnimationFrame(() => repeatInputRef.current?.focus())
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingRepeat])
+
+  function commitRepeat() {
+    const trimmed = repeatDraft.trim()
+    const n = parseInt(trimmed, 10)
+    if (!Number.isFinite(n) || n <= 1) {
+      onUpdateLine({ repeatCount: null })
+    } else {
+      onUpdateLine({ repeatCount: Math.min(n, 99) })
+    }
+    setEditingRepeat(false)
+  }
+
+  function clearRepeat() {
+    onUpdateLine({ repeatCount: null })
+    setEditingRepeat(false)
+  }
 
   function commitKey() {
     const trimmed = keyDraft.trim()
@@ -104,10 +152,13 @@ export default function Line({
   }
 
   // Long-press or right-click anywhere on the row opens the same "add line"
-  // menu as the FAB, pre-targeted to insert right after this line.
+  // menu as the FAB, pre-targeted to insert right after this line. On touch the
+  // menu is opened by a double-tap instead of a long press.
   function handleRowPointerDown(e) {
     if (e.button != null && e.button !== 0) return
+    if (isEditableTarget(e)) return
     rowLongPressFired.current = false
+    if (e.pointerType === 'touch') return
     const x = e.clientX
     const y = e.clientY
     rowPressTimer.current = setTimeout(() => {
@@ -115,10 +166,28 @@ export default function Line({
       onRequestLineMenu && onRequestLineMenu(line.id, x, y)
     }, 500)
   }
+  function handleRowPointerUp(e) {
+    clearTimeout(rowPressTimer.current)
+    if (e.pointerType !== 'touch') return
+    if (isEditableTarget(e)) return
+    // A tap that landed on a chord chip belongs to the chord gesture — don't
+    // count it toward the row double-tap so chord long-press never blocks
+    // line insertion.
+    if (chordGestureRef.current || e.target.closest?.('.chord-chip, .chord-token')) return
+    const now = Date.now()
+    if (now - rowLastTapAtRef.current < DBL_TAP_MS) {
+      rowLastTapAtRef.current = 0
+      rowLongPressFired.current = true
+      onRequestLineMenu && onRequestLineMenu(line.id, e.clientX, e.clientY)
+    } else {
+      rowLastTapAtRef.current = now
+    }
+  }
   function cancelRowPress() {
     clearTimeout(rowPressTimer.current)
   }
   function handleRowContextMenu(e) {
+    if (isEditableTarget(e)) return
     e.preventDefault()
     onRequestLineMenu && onRequestLineMenu(line.id, e.clientX, e.clientY)
   }
@@ -154,9 +223,6 @@ export default function Line({
     let canceled = false
     let holdTimer = null
 
-    // Lock the pointer to the chip for the entire touch so the browser keeps
-    // delivering pointer events (no pointercancel from scrolling/system
-    // gestures). Auto-released on pointerup/pointercancel.
     if (isTouch && chipEl && typeof chipEl.setPointerCapture === 'function') {
       try {
         chipEl.setPointerCapture(pointerId)
@@ -224,7 +290,7 @@ export default function Line({
         dragging = true
         if (armed) disarm()
         cleanup()
-        onChordDragStart({ line, chord, clientX: ev.clientX, clientY: ev.clientY, grabOffsetX })
+        onChordDragStart({ line, chord, clientX: ev.clientX, clientY: ev.clientY, grabOffsetX, shiftKey: ev.shiftKey })
       }
     }
 
@@ -238,7 +304,6 @@ export default function Line({
         }
         return
       }
-      // Desktop: double-click opens the edit picker.
       const now = Date.now()
       if (now - lastDesktopClickAtRef.current < DBL_CLICK_MS) {
         lastDesktopClickAtRef.current = 0
@@ -253,6 +318,44 @@ export default function Line({
       disarm()
     }
 
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
+  }
+
+  // Desktop-only drag of a whole instrumental line: reorders it within the
+  // song, or — with Shift held — drops a copy instead of moving. Touch is
+  // intentionally not supported here.
+  function handleLineDragPointerDown(downEvent) {
+    if (downEvent.pointerType === 'touch') return
+    if (downEvent.button != null && downEvent.button !== 0) return
+    downEvent.stopPropagation()
+    const startX = downEvent.clientX
+    const startY = downEvent.clientY
+    let dragging = false
+    let canceled = false
+
+    function onMove(ev) {
+      if (canceled) return
+      if (!dragging && Math.hypot(ev.clientX - startX, ev.clientY - startY) > DRAG_THRESHOLD) {
+        dragging = true
+        cleanup()
+        onLineDragStart &&
+          onLineDragStart({ line, clientX: ev.clientX, clientY: ev.clientY, shiftKey: ev.shiftKey })
+      }
+    }
+    function onUp() {
+      cleanup()
+    }
+    function onCancel() {
+      cleanup()
+      canceled = true
+    }
+    function cleanup() {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onCancel)
+    }
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
     window.addEventListener('pointercancel', onCancel)
@@ -306,7 +409,7 @@ export default function Line({
         data-line-mode={mode}
         onClickCapture={readOnly ? undefined : handleRowClickCapture}
         onPointerDown={readOnly ? undefined : handleRowPointerDown}
-        onPointerUp={readOnly ? undefined : cancelRowPress}
+        onPointerUp={readOnly ? undefined : handleRowPointerUp}
         onPointerLeave={readOnly ? undefined : cancelRowPress}
         onPointerCancel={readOnly ? undefined : cancelRowPress}
         onContextMenu={readOnly ? undefined : handleRowContextMenu}
@@ -334,7 +437,7 @@ export default function Line({
         data-line-mode={mode}
         onClickCapture={readOnly ? undefined : handleRowClickCapture}
         onPointerDown={readOnly ? undefined : handleRowPointerDown}
-        onPointerUp={readOnly ? undefined : cancelRowPress}
+        onPointerUp={readOnly ? undefined : handleRowPointerUp}
         onPointerLeave={readOnly ? undefined : cancelRowPress}
         onPointerCancel={readOnly ? undefined : cancelRowPress}
         onContextMenu={readOnly ? undefined : handleRowContextMenu}
@@ -408,7 +511,9 @@ export default function Line({
           {sortedChords.map((c, i) => (
             <span key={c.id}>
               {i > 0 && <span className="sep">|</span>}
-              <span className="chord-token">{c.chord}</span>
+              <span className="chord-token" data-chord-semitone={chordSemitone(c.chord) ?? undefined}>
+                {c.chord}
+              </span>
             </span>
           ))}
           {repeatCount > 1 && <span className="repeat-tag">×{repeatCount}</span>}
@@ -426,19 +531,24 @@ export default function Line({
   if (line.type === 'chords') {
     return (
       <div
-        className={'line-row' + (isFocused ? ' is-focused' : '')}
+        className={'line-row' + (isFocused ? ' is-focused' : '') + (draggingLineId === line.id ? ' is-dragging' : '')}
         data-line-id={line.id}
         data-line-type="chords"
         data-line-mode={mode}
         onClickCapture={handleRowClickCapture}
         onPointerDown={handleRowPointerDown}
-        onPointerUp={cancelRowPress}
+        onPointerUp={handleRowPointerUp}
         onPointerLeave={cancelRowPress}
         onPointerCancel={cancelRowPress}
         onContextMenu={handleRowContextMenu}
       >
         <div className="line-content">
           <div className="chords-only-row editable" onClick={handleInstrumentalBgClick}>
+            <IconGrip
+              className="line-drag-handle"
+              onPointerDown={handleLineDragPointerDown}
+              onClick={(e) => e.stopPropagation()}
+            />
             <IconMusic className="instrumental-icon" />
             {sortedChords.length === 0 && <span className="instrumental-hint">Проигрыш — нажмите, чтобы добавить аккорд</span>}
             {sortedChords.map((c, i) => (
@@ -446,6 +556,7 @@ export default function Line({
                 {i > 0 && <span className="sep">|</span>}
                 <span
                   className={'chord-token' + (armedChordId === c.id ? ' is-armed' : '')}
+                  data-chord-semitone={chordSemitone(c.chord) ?? undefined}
                   style={draggingChordId === c.id ? { opacity: 0.25 } : undefined}
                   onPointerDown={(e) => handleChordPointerDown(e, c)}
                   onClick={(e) => e.stopPropagation()}
@@ -455,6 +566,60 @@ export default function Line({
                 </span>
               </span>
             ))}
+            {editingRepeat ? (
+              <span
+                className="repeat-control"
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+              >
+                <span className="repeat-control-sign">×</span>
+                <input
+                  ref={repeatInputRef}
+                  className="repeat-input"
+                  type="number"
+                  min={2}
+                  max={99}
+                  inputMode="numeric"
+                  value={repeatDraft}
+                  placeholder="2"
+                  onChange={(e) => setRepeatDraft(e.target.value)}
+                  onBlur={commitRepeat}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      commitRepeat()
+                    } else if (e.key === 'Escape') {
+                      setEditingRepeat(false)
+                    }
+                  }}
+                />
+                {line.repeatCount > 1 && (
+                  <button
+                    type="button"
+                    className="repeat-clear"
+                    onClick={clearRepeat}
+                    onPointerDown={(e) => e.stopPropagation()}
+                    aria-label="Убрать повторы"
+                    title="Убрать повторы"
+                  >
+                    <IconClose />
+                  </button>
+                )}
+              </span>
+            ) : (
+              <button
+                type="button"
+                className={'repeat-pill' + (line.repeatCount > 1 ? '' : ' is-empty')}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setEditingRepeat(true)
+                }}
+                onPointerDown={(e) => e.stopPropagation()}
+                title={line.repeatCount > 1 ? 'Изменить количество повторов' : 'Добавить количество повторов'}
+              >
+                {line.repeatCount > 1 ? `×${line.repeatCount}` : '× повтор'}
+              </button>
+            )}
           </div>
         </div>
         {renderDeleteButton('Удалить строку')}
@@ -469,7 +634,7 @@ export default function Line({
       data-line-mode={mode}
       onClickCapture={handleRowClickCapture}
       onPointerDown={handleRowPointerDown}
-      onPointerUp={cancelRowPress}
+      onPointerUp={handleRowPointerUp}
       onPointerLeave={cancelRowPress}
       onPointerCancel={cancelRowPress}
       onContextMenu={handleRowContextMenu}
@@ -481,6 +646,7 @@ export default function Line({
               <span
                 key={c.id}
                 className={'chord-chip' + (armedChordId === c.id ? ' is-armed' : '')}
+                data-chord-semitone={chordSemitone(c.chord) ?? undefined}
                 style={{ left: c.position * charWidth, opacity: draggingChordId === c.id ? 0.25 : 1 }}
                 onPointerDown={(e) => handleChordPointerDown(e, c)}
                 onClick={(e) => e.stopPropagation()}

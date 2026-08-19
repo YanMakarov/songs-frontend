@@ -3,6 +3,8 @@
 const THEME_KEY = 'chords_app_theme_v1'
 const VIEW_MODE_KEY = 'chords_app_view_mode_v1'
 const TEXT_SCALE_KEY = 'chords_app_text_scale_v1'
+const COLOR_SCHEME_KEY = 'chords_app_color_scheme_v1'
+const LOCAL_SONG_PREFIX = 'chords_app_local_song_'
 
 export function uid() {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
@@ -57,4 +59,41 @@ export function loadTextScale() {
 
 export function saveTextScale(scale) {
   localStorage.setItem(TEXT_SCALE_KEY, String(scale))
+}
+
+export function loadColorScheme() {
+  return localStorage.getItem(COLOR_SCHEME_KEY) === 'on'
+}
+
+export function saveColorScheme(enabled) {
+  localStorage.setItem(COLOR_SCHEME_KEY, enabled ? 'on' : 'off')
+}
+
+// Per-song local transposition override. While active, the editor shows and
+// edits a local copy of { key, lines } instead of the server song. The copy
+// is flushed to the server only when the user explicitly sets a new original
+// tonality. Lets the user try transpositions without touching the server.
+export function loadLocalSongOverride(songId) {
+  if (!songId) return null
+  try {
+    const raw = localStorage.getItem(LOCAL_SONG_PREFIX + songId)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    if (parsed && typeof parsed.key === 'string' && Array.isArray(parsed.lines)) {
+      return { key: parsed.key, lines: parsed.lines }
+    }
+  } catch {
+    // ignore malformed entry
+  }
+  return null
+}
+
+export function saveLocalSongOverride(songId, override) {
+  if (!songId || !override) return
+  localStorage.setItem(LOCAL_SONG_PREFIX + songId, JSON.stringify(override))
+}
+
+export function clearLocalSongOverride(songId) {
+  if (!songId) return
+  localStorage.removeItem(LOCAL_SONG_PREFIX + songId)
 }

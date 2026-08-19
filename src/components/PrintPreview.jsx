@@ -15,10 +15,18 @@ const PDF_SECTION_SIZE = 13
 // spacing before printing.
 export default function PrintPreview({ song, viewMode, appliedTextScale, onChange, onClose, onDownload }) {
   const measureRef = useRef(null)
+  const scrollRef = useRef(null)
+  const sheetRef = useRef(null)
   const [charWidth, setCharWidth] = useState(7.2)
+  const [fitScale, setFitScale] = useState(1)
+  const [sheetHeight, setSheetHeight] = useState(0)
   const scale = Number.isFinite(appliedTextScale) ? appliedTextScale : 1
 
   const items = useMemo(() => buildPrintableItems(song, viewMode), [song, viewMode])
+
+  // A4 sheet width in CSS px (1mm = 96/25.4 px). Used to fit the preview to
+  // narrow viewports without distorting the print layout.
+  const SHEET_WIDTH_PX = (210 * 96) / 25.4
 
   useLayoutEffect(() => {
     function measure() {
@@ -37,6 +45,26 @@ export default function PrintPreview({ song, viewMode, appliedTextScale, onChang
       pending = false
     }
   }, [scale])
+
+  // Fit the A4 sheet to the available width on small screens so it does not
+  // overflow horizontally. The sheet is scaled via transform; a wrapper
+  // reserves the scaled layout size so the scroll area stays tight.
+  useLayoutEffect(() => {
+    const container = scrollRef.current
+    const sheet = sheetRef.current
+    if (!container || !sheet) return
+    function compute() {
+      const avail = container.clientWidth - 32 // horizontal padding 16px each
+      const s = avail > 0 ? Math.min(1, avail / SHEET_WIDTH_PX) : 1
+      setFitScale(s)
+      setSheetHeight(sheet.scrollHeight)
+    }
+    compute()
+    const ro = new ResizeObserver(compute)
+    ro.observe(container)
+    ro.observe(sheet)
+    return () => ro.disconnect()
+  }, [scale, items, SHEET_WIDTH_PX])
 
   function addEmptyLineAfter(lineId) {
     const idx = song.lines.findIndex((l) => l.id === lineId)
@@ -91,28 +119,36 @@ export default function PrintPreview({ song, viewMode, appliedTextScale, onChang
         {'M'.repeat(40)}
       </span>
 
-      <div className="print-preview-scroll">
-        <section className="pdf-sheet">
-          <header className="pdf-header">
-            <span className="pdf-title">{song.title || 'Без названия'}</span>
-            {meta && <span className="pdf-meta">{meta}</span>}
-          </header>
-          <div className="pdf-body">
-            {items.length === 0 ? (
-              <div className="pdf-empty">Нет строк</div>
-            ) : (
-              items.map((it) => (
-                <PrintLineContent
-                  key={it.line.id}
-                  item={it}
-                  charWidth={charWidth}
-                  onAddAfter={() => addEmptyLineAfter(it.line.id)}
-                  onDelete={isEmptyLine(it.line) ? () => deleteLine(it.line.id) : null}
-                />
-              ))
-            )}
-          </div>
-        </section>
+      <div className="print-preview-scroll" ref={scrollRef}>
+        <div
+          className="pdf-sheet-wrap"
+          style={{
+            '--preview-fit-scale': fitScale,
+            '--preview-sheet-height': sheetHeight,
+          }}
+        >
+          <section className="pdf-sheet" ref={sheetRef}>
+            <header className="pdf-header">
+              <span className="pdf-title">{song.title || 'Без названия'}</span>
+              {meta && <span className="pdf-meta">{meta}</span>}
+            </header>
+            <div className="pdf-body">
+              {items.length === 0 ? (
+                <div className="pdf-empty">Нет строк</div>
+              ) : (
+                items.map((it) => (
+                  <PrintLineContent
+                    key={it.line.id}
+                    item={it}
+                    charWidth={charWidth}
+                    onAddAfter={() => addEmptyLineAfter(it.line.id)}
+                    onDelete={isEmptyLine(it.line) ? () => deleteLine(it.line.id) : null}
+                  />
+                ))
+              )}
+            </div>
+          </section>
+        </div>
       </div>
     </div>
   )
@@ -199,6 +235,7 @@ function PrintLineBody({ line, kind, charWidth }) {
             </span>
           ))
         )}
+        {line.repeatCount > 1 && <span className="pdf-repeat-tag">×{line.repeatCount}</span>}
       </div>
     )
   }

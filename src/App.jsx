@@ -2,8 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom'
 import SongList from './components/SongList.jsx'
 import SongEditor from './components/SongEditor.jsx'
-import { loadTheme, saveTheme, loadViewMode, saveViewMode, loadTextScale, saveTextScale } from './lib/storage.js'
+import { loadTheme, saveTheme, loadViewMode, saveViewMode, loadTextScale, saveTextScale, loadColorScheme, saveColorScheme } from './lib/storage.js'
 import { applyTheme } from './lib/theme.js'
+import AppSettingsModal from './components/AppSettingsModal.jsx'
 import { UNDO_TIMEOUT_MS } from './lib/undo.js'
 import {
   ApiError,
@@ -27,6 +28,8 @@ export default function App() {
   const [theme, setTheme] = useState(loadTheme)
   const [viewMode, setViewMode] = useState(loadViewMode)
   const [textScale, setTextScale] = useState(loadTextScale)
+  const [colorScheme, setColorScheme] = useState(loadColorScheme)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const songsRef = useRef(songs)
   const pendingDeleteRef = useRef(null)
 
@@ -45,7 +48,13 @@ export default function App() {
 
   useEffect(() => {
     saveTextScale(textScale)
+    document.documentElement.style.setProperty('--song-scale', String(Number.isFinite(textScale) ? textScale : 1))
   }, [textScale])
+
+  useEffect(() => {
+    saveColorScheme(colorScheme)
+    document.documentElement.setAttribute('data-color-scheme', colorScheme ? 'on' : 'off')
+  }, [colorScheme])
 
   const fetchSongs = useCallback(async () => {
     setSongsLoading(true)
@@ -173,7 +182,8 @@ export default function App() {
   }, [fetchSongs])
 
   return (
-    <Routes>
+    <>
+      <Routes>
       <Route path="/" element={<Navigate to="/songs" replace />} />
       <Route
         path="/songs"
@@ -192,6 +202,7 @@ export default function App() {
             onSetlistRename={handleSetlistRename}
             theme={theme}
             onThemeChange={setTheme}
+            onOpenSettings={() => setSettingsOpen(true)}
           />
         }
       />
@@ -205,12 +216,21 @@ export default function App() {
             theme={theme}
             onThemeChange={setTheme}
             textScale={textScale}
-            onTextScaleChange={setTextScale}
+            onOpenSettings={() => setSettingsOpen(true)}
           />
         }
       />
       <Route path="*" element={<Navigate to="/songs" replace />} />
-    </Routes>
+      </Routes>
+      <AppSettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        textScale={textScale}
+        onTextScaleChange={setTextScale}
+        colorScheme={colorScheme}
+        onColorSchemeChange={setColorScheme}
+      />
+    </>
   )
 }
 
@@ -228,6 +248,7 @@ function SongListRoute({
   onSetlistRename,
   theme,
   onThemeChange,
+  onOpenSettings,
 }) {
   const navigate = useNavigate()
   const [creating, setCreating] = useState(false)
@@ -276,6 +297,7 @@ function SongListRoute({
       onSetlistRename={onSetlistRename}
       theme={theme}
       onThemeChange={onThemeChange}
+      onOpenSettings={onOpenSettings}
     />
   )
 }
@@ -287,7 +309,7 @@ function SongEditorRoute({
   theme,
   onThemeChange,
   textScale,
-  onTextScaleChange,
+  onOpenSettings,
 }) {
   const { songId } = useParams()
   const navigate = useNavigate()
@@ -467,7 +489,7 @@ function SongEditorRoute({
         theme={theme}
         onThemeChange={onThemeChange}
         textScale={textScale}
-        onTextScaleChange={onTextScaleChange}
+        onOpenSettings={onOpenSettings}
       />
       {saveError && (
         <div className="save-banner" role="status">

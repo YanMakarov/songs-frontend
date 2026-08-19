@@ -4,23 +4,19 @@ import Line from './Line.jsx'
 import ChordPicker from './ChordPicker.jsx'
 import AddLineMenu from './AddLineMenu.jsx'
 import ChordContextMenu from './ChordContextMenu.jsx'
-import { IconChevronLeft, IconPlus, IconSettings, IconUpload, IconEye } from './Icons.jsx'
+import { IconChevronLeft, IconPlus, IconSettings, IconUpload, IconEye, IconMusic } from './Icons.jsx'
 import ThemeMenu from './ThemeMenu.jsx'
 import Tooltip from './Tooltip.jsx'
 import { transposeChord, transposeKey, parseKey, keySemitoneDelta } from '../lib/music.js'
-import { emptyLine, sectionLine, instrumentalLine, pagebreakLine, uid } from '../lib/storage.js'
+import { emptyLine, sectionLine, instrumentalLine, pagebreakLine, uid, loadLocalSongOverride, saveLocalSongOverride, clearLocalSongOverride } from '../lib/storage.js'
 import { collapseRepeats } from '../lib/repeats.js'
-import EditorSettingsModal from './EditorSettingsModal.jsx'
 import PrintPreview from './PrintPreview.jsx'
 import { ApiError, importPdf } from '../lib/api.js'
 import { UNDO_TIMEOUT_MS } from '../lib/undo.js'
 import UndoBanner from './UndoBanner.jsx'
 
 const LONG_PRESS_MS = 500
-const TEXT_SCALE_MIN = 0.85
-const TEXT_SCALE_MAX = 1.4
-const TEXT_SCALE_STEP = 0.05
-
+const DBL_TAP_MS = 320
 function isPristineEmptyLine(line) {
   if (!line || line.type !== 'line') return false
   const hasLyrics = typeof line.lyrics === 'string' && line.lyrics.trim().length > 0
@@ -37,17 +33,18 @@ export default function SongEditor({
   theme,
   onThemeChange,
   textScale,
-  onTextScaleChange,
+  onOpenSettings,
 }) {
   const [picker, setPicker] = useState(null)
   const [addMenu, setAddMenu] = useState(null)
   const [chordMenu, setChordMenu] = useState(null)
   const [charWidth, setCharWidth] = useState(8.6)
   const [drag, setDrag] = useState(null)
+  const [lineDrag, setLineDrag] = useState(null)
   const [importing, setImporting] = useState(false)
   const [focusedLineId, setFocusedLineId] = useState(null)
   const [confirmOriginalKey, setConfirmOriginalKey] = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [localOverride, setLocalOverride] = useState(null)
   const [printPreview, setPrintPreview] = useState(false)
   const [pendingLineDelete, setPendingLineDelete] = useState(null)
   const measureRef = useRef(null)
@@ -56,31 +53,43 @@ export default function SongEditor({
   const pressTimer = useRef(null)
   const longPressFired = useRef(false)
   const dragRef = useRef(null)
+  const lineDragRef = useRef(null)
   const suppressClickRef = useRef(false)
   const suppressClickTimer = useRef(null)
+  const lastEmptyTapAtRef = useRef(0)
   const songRef = useRef(song)
   const onChangeRef = useRef(onChange)
   const charWidthRef = useRef(charWidth)
   const pendingLineDeleteRef = useRef(null)
-  songRef.current = song
+  const commitPatchRef = useRef(null)
+  const appliedTextScale = Number.isFinite(textScale) ? textScale : 1
+
+  // Local transposition override: a per-song copy of { key, lines } kept only
+  // in localStorage. While active, the editor shows and edits this copy; the
+  // server keeps the original. Flushed to the server only when the user
+  // explicitly sets a new original tonality.
+  const effectiveSong = useMemo(
+    () => (localOverride ? { ...song, key: localOverride.key, lines: localOverride.lines } : song),
+    [song, localOverride],
+  )
+  const originalKey = song.originalKey || song.key || 'C'
+  const isTransposed = Boolean(localOverride)
+  songRef.current = effectiveSong
   onChangeRef.current = onChange
   charWidthRef.current = charWidth
-  const appliedTextScale = Number.isFinite(textScale) ? textScale : 1
-  const originalKey = song.originalKey || song.key || 'C'
-  const isTransposed = Boolean(song.key && song.key !== originalKey)
   const scaleStyleVars = useMemo(() => {
     const px = (value) => `${Number((value * appliedTextScale).toFixed(3))}px`
     return {
       '--song-scale': appliedTextScale,
       '--song-title-size': px(22),
       '--lyrics-font-size': px(15),
-      '--lyrics-line-height': px(22),
+      '--lyrics-line-height': px(24),
       '--chord-chip-size': px(13),
       '--chord-chip-line-height': px(18),
       '--section-label-size': px(12.5),
       '--section-input-size': px(13),
       '--section-key-size': px(11.5),
-      '--chords-line-size': px(14),
+      '--chords-line-size': px(16),
       '--instrumental-hint-size': px(13),
     }
   }, [appliedTextScale])
@@ -92,12 +101,48 @@ export default function SongEditor({
     }
   }, [appliedTextScale])
 
+  useEffect(() => {
+    if (!song?.id) return
+    setLocalOverride(loadLocalSongOverride(song.id))
+  }, [song?.id])
+
+  // Keep the screen awake while a song is open (Screen Wake Lock API).
+  // The lock is released by the browser when the tab is hidden, so we
+  // re-acquire it on visibilitychange.
+  useEffect(() => {
+    let sentinel = null
+    let released = false
+    async function acquire() {
+      try {
+        if (!('wakeLock' in navigator)) return
+        sentinel = await navigator.wakeLock.request('screen')
+        sentinel.addEventListener('release', () => {
+          sentinel = null
+        })
+      } catch {
+        // User agent denied or unsupported — fail silently.
+      }
+    }
+    function onVisibilityChange() {
+      if (document.visibilityState === 'visible' && !released) acquire()
+    }
+    acquire()
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      released = true
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+      if (sentinel) sentinel.release()
+    }
+  }, [song?.id])
+
   // Persistent window-level listeners driving the chord drag gesture.
   useEffect(() => {
     function onMove(e) {
       if (!dragRef.current) return
       if (e.cancelable) e.preventDefault()
-      setDrag({ chord: dragRef.current.chord, x: e.clientX, y: e.clientY })
+      const copy = e.shiftKey
+      dragRef.current.copy = copy
+      setDrag({ chord: dragRef.current.chord, x: e.clientX, y: e.clientY, copy })
     }
     function onUp(e) {
       if (!dragRef.current) return
@@ -110,6 +155,37 @@ export default function SongEditor({
       if (!dragRef.current) return
       dragRef.current = null
       setDrag(null)
+    }
+    window.addEventListener('pointermove', onMove, { passive: false })
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onCancel)
+    return () => {
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onCancel)
+    }
+  }, [])
+
+  // Persistent window-level listeners driving the whole-line drag gesture
+  // (reorder instrumental lines, or copy with Shift).
+  useEffect(() => {
+    function onMove(e) {
+      if (!lineDragRef.current) return
+      if (e.cancelable) e.preventDefault()
+      const copy = e.shiftKey
+      lineDragRef.current.copy = copy
+      setLineDrag({ line: lineDragRef.current.line, x: e.clientX, y: e.clientY, copy })
+    }
+    function onUp(e) {
+      if (!lineDragRef.current) return
+      resolveLineDrop(e.clientY)
+      lineDragRef.current = null
+      setLineDrag(null)
+    }
+    function onCancel() {
+      if (!lineDragRef.current) return
+      lineDragRef.current = null
+      setLineDrag(null)
     }
     window.addEventListener('pointermove', onMove, { passive: false })
     window.addEventListener('pointerup', onUp)
@@ -181,7 +257,7 @@ export default function SongEditor({
   function resolveDrop(clientX, clientY) {
     const info = dragRef.current
     if (!info) return
-    const { fromLineId, chord, grabOffsetX = 0 } = info
+    const { fromLineId, chord, grabOffsetX = 0, copy = false } = info
     const song = songRef.current
     const charWidth = charWidthRef.current
     const target = document.elementFromPoint(clientX, clientY)
@@ -210,17 +286,21 @@ export default function SongEditor({
           position = others.length ? Math.max(...others.map((c) => c.position)) + 1 : 0
         }
       }
+      const placedChord = copy ? { ...chord, id: uid(), position } : { ...chord, position }
       const lines = song.lines.map((l) => {
         if (l.id === targetLineId) {
+          if (copy) {
+            return { ...l, chords: [...l.chords, placedChord] }
+          }
           const withoutOld = l.chords.filter((c) => c.id !== chord.id)
-          return { ...l, chords: [...withoutOld, { ...chord, position }] }
+          return { ...l, chords: [...withoutOld, placedChord] }
         }
-        if (l.id === fromLineId) {
+        if (!copy && l.id === fromLineId) {
           return { ...l, chords: l.chords.filter((c) => c.id !== chord.id) }
         }
         return l
       })
-      onChangeRef.current({ lines })
+      commitPatchRef.current({ lines })
     } else if (canvasRef.current) {
       // Dropped on empty canvas space -> create a new line at that vertical position.
       const rows = Array.from(canvasRef.current.querySelectorAll('.line-row'))
@@ -232,36 +312,116 @@ export default function SongEditor({
           break
         }
       }
-      const withoutOld = song.lines.map((l) =>
-        l.id === fromLineId ? { ...l, chords: l.chords.filter((c) => c.id !== chord.id) } : l,
-      )
-      const newLine = { id: uid(), type: 'line', lyrics: '', chords: [{ ...chord, position: 0 }] }
-      const lines = [...withoutOld.slice(0, insertIndex), newLine, ...withoutOld.slice(insertIndex)]
-      onChangeRef.current({ lines })
+      const baseLines = copy
+        ? song.lines
+        : song.lines.map((l) =>
+            l.id === fromLineId ? { ...l, chords: l.chords.filter((c) => c.id !== chord.id) } : l,
+          )
+      const newChord = copy ? { ...chord, id: uid(), position: 0 } : { ...chord, position: 0 }
+      const newLine = { id: uid(), type: 'line', lyrics: '', chords: [newChord] }
+      const lines = [...baseLines.slice(0, insertIndex), newLine, ...baseLines.slice(insertIndex)]
+      commitPatchRef.current({ lines })
     }
   }
 
-  function handleChordDragStart({ line, chord, clientX, clientY, grabOffsetX = 0 }) {
-    dragRef.current = { fromLineId: line.id, chord, grabOffsetX }
-    setDrag({ chord, x: clientX, y: clientY })
+  function handleChordDragStart({ line, chord, clientX, clientY, grabOffsetX = 0, shiftKey = false }) {
+    dragRef.current = { fromLineId: line.id, chord, grabOffsetX, copy: shiftKey }
+    setDrag({ chord, x: clientX, y: clientY, copy: shiftKey })
   }
 
+  // Build a deep copy of a line with fresh ids for the line and every chord so
+  // duplicated content never collides with the original.
+  function cloneLineWithNewIds(line) {
+    const chords = (line.chords || []).map((c) => ({ ...c, id: uid() }))
+    return { ...line, id: uid(), chords }
+  }
+
+  function resolveLineDrop(clientY) {
+    const info = lineDragRef.current
+    if (!info) return
+    const { line, copy = false } = info
+    const song = songRef.current
+    if (!canvasRef.current) return
+    const rows = Array.from(canvasRef.current.querySelectorAll('.line-row'))
+    let insertIndex = song.lines.length
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i].getBoundingClientRect()
+      if (clientY < r.top) {
+        insertIndex = i
+        break
+      }
+      if (clientY < r.bottom) {
+        insertIndex = clientY < r.top + r.height / 2 ? i : i + 1
+        break
+      }
+    }
+    let lines
+    if (copy) {
+      const clone = cloneLineWithNewIds(line)
+      lines = [...song.lines.slice(0, insertIndex), clone, ...song.lines.slice(insertIndex)]
+    } else {
+      const without = song.lines.filter((l) => l.id !== line.id)
+      const fromIndex = song.lines.findIndex((l) => l.id === line.id)
+      let target = insertIndex
+      if (fromIndex !== -1 && fromIndex < target) target -= 1
+      target = Math.max(0, Math.min(target, without.length))
+      lines = [...without.slice(0, target), line, ...without.slice(target)]
+    }
+    commitPatchRef.current({ lines })
+  }
+
+  function handleLineDragStart({ line, clientX, clientY, shiftKey = false }) {
+    lineDragRef.current = { line, copy: shiftKey }
+    setLineDrag({ line, x: clientX, y: clientY, copy: shiftKey })
+  }
+
+  // Single entry for content patches. While a local transposition override
+  // is active, key/lines edits are routed to the localStorage override
+  // (never to the server); everything else is forwarded to the server.
+  function commitPatch(patch) {
+    if (!localOverride) {
+      onChange(patch)
+      return
+    }
+    const serverPatch = { ...patch }
+    const localFields = {}
+    if (Object.prototype.hasOwnProperty.call(patch, 'lines')) {
+      localFields.lines = patch.lines
+      delete serverPatch.lines
+    }
+    if (Object.prototype.hasOwnProperty.call(patch, 'key')) {
+      localFields.key = patch.key
+      delete serverPatch.key
+    }
+    if (Object.keys(localFields).length) {
+      setLocalOverride((prev) => {
+        const next = { ...prev, ...localFields }
+        if (song?.id) saveLocalSongOverride(song.id, next)
+        return next
+      })
+    }
+    if (Object.keys(serverPatch).length) {
+      onChange(serverPatch)
+    }
+  }
+  commitPatchRef.current = commitPatch
+
   function updateLine(lineId, patch) {
-    const lines = song.lines.map((l) => (l.id === lineId ? { ...l, ...patch } : l))
-    onChange({ lines })
+    const lines = effectiveSong.lines.map((l) => (l.id === lineId ? { ...l, ...patch } : l))
+    commitPatch({ lines })
   }
 
   function deleteLine(lineId) {
-    const idx = song.lines.findIndex((l) => l.id === lineId)
+    const idx = effectiveSong.lines.findIndex((l) => l.id === lineId)
     if (idx === -1) return
-    const line = song.lines[idx]
+    const line = effectiveSong.lines[idx]
     if (pendingLineDeleteRef.current) {
       clearTimeout(pendingLineDeleteRef.current.timer)
     }
-    const remaining = song.lines.filter((l) => l.id !== lineId)
+    const remaining = effectiveSong.lines.filter((l) => l.id !== lineId)
     const wasLast = remaining.length === 0
     const lines = remaining.length ? remaining : [emptyLine()]
-    onChange({ lines })
+    commitPatch({ lines })
     if (focusedLineId === lineId) setFocusedLineId(null)
     const expiresAt = Date.now() + UNDO_TIMEOUT_MS
     const timer = setTimeout(() => {
@@ -286,23 +446,23 @@ export default function SongEditor({
     }
     const insertIndex = Math.min(pending.index, lines.length)
     lines.splice(insertIndex, 0, pending.line)
-    onChangeRef.current({ lines })
+    commitPatchRef.current({ lines })
   }
 
   function addLineAt(index, newLine) {
-    const lines = [...song.lines]
+    const lines = [...effectiveSong.lines]
     lines.splice(index, 0, newLine)
-    onChange({ lines })
+    commitPatch({ lines })
   }
 
   // When a line is focused (last clicked/edited), new lines from the FAB /
   // empty-area gesture are inserted right after it instead of at the very end.
   function focusAwareInsertIndex() {
     if (focusedLineId) {
-      const idx = song.lines.findIndex((l) => l.id === focusedLineId)
+      const idx = effectiveSong.lines.findIndex((l) => l.id === focusedLineId)
       if (idx !== -1) return idx + 1
     }
-    return song.lines.length
+    return effectiveSong.lines.length
   }
 
   function openAddMenu(x, y, insertAt) {
@@ -324,10 +484,10 @@ export default function SongEditor({
   }
 
   function describeInsertPosition(insertAt) {
-    if (!song.lines.length) return 'Новая строка'
+    if (!effectiveSong.lines.length) return 'Новая строка'
     if (insertAt <= 0) return 'Добавить в начало'
-    if (insertAt >= song.lines.length) return 'Добавить в конец'
-    return `Добавить после «${truncate(lineSummary(song.lines[insertAt - 1]), 22)}»`
+    if (insertAt >= effectiveSong.lines.length) return 'Добавить в конец'
+    return `Добавить после «${truncate(lineSummary(effectiveSong.lines[insertAt - 1]), 22)}»`
   }
 
   function commitAddMenu(type) {
@@ -346,12 +506,27 @@ export default function SongEditor({
   }
 
   function handlePointerDown(e) {
+    if (e.pointerType === 'touch') return
     longPressFired.current = false
     const { clientX, clientY } = e
     pressTimer.current = setTimeout(() => {
       longPressFired.current = true
       openAddMenu(clientX, clientY, focusAwareInsertIndex())
     }, LONG_PRESS_MS)
+  }
+  function handlePointerUp(e) {
+    clearTimeout(pressTimer.current)
+    if (e.pointerType !== 'touch') return
+    const now = Date.now()
+    if (now - lastEmptyTapAtRef.current < DBL_TAP_MS) {
+      lastEmptyTapAtRef.current = 0
+      // Suppress the synthesized dblclick that some browsers fire after a
+      // touch double-tap, so the menu doesn't open twice.
+      longPressFired.current = true
+      openAddMenu(e.clientX, e.clientY, focusAwareInsertIndex())
+    } else {
+      lastEmptyTapAtRef.current = now
+    }
   }
   function cancelPress() {
     clearTimeout(pressTimer.current)
@@ -364,17 +539,24 @@ export default function SongEditor({
     openAddMenu(e.clientX, e.clientY, focusAwareInsertIndex())
   }
 
-  function handleTranspose(delta) {
-    const newKey = transposeKey(song.key, delta)
+  function applyTransposeTo(base, delta) {
+    const newKey = transposeKey(base.key, delta)
     const preferFlat = parseKey(newKey).preferFlat
-    const lines = song.lines.map((l) => {
+    const lines = base.lines.map((l) => {
       const chords = l.chords.map((c) => ({ ...c, chord: transposeChord(c.chord, delta, preferFlat) }))
       if (l.type === 'section' && l.key) {
         return { ...l, chords, key: transposeKey(l.key, delta) }
       }
       return { ...l, chords }
     })
-    onChange({ key: newKey, lines })
+    return { key: newKey, lines }
+  }
+
+  function handleTranspose(delta) {
+    const base = localOverride || { key: effectiveSong.key, lines: effectiveSong.lines }
+    const next = applyTransposeTo(base, delta)
+    setLocalOverride(next)
+    if (song?.id) saveLocalSongOverride(song.id, next)
   }
 
   function handleRequestOriginalKeyReset() {
@@ -383,7 +565,18 @@ export default function SongEditor({
   }
 
   function handleConfirmOriginalKeyReset() {
-    onChange({ originalKey: song.key })
+    if (!localOverride) {
+      setConfirmOriginalKey(false)
+      return
+    }
+    // Commit the local transposed copy to the server as the new original.
+    onChange({
+      key: localOverride.key,
+      originalKey: localOverride.key,
+      lines: localOverride.lines,
+    })
+    setLocalOverride(null)
+    if (song?.id) clearLocalSongOverride(song.id)
     setConfirmOriginalKey(false)
   }
 
@@ -392,14 +585,17 @@ export default function SongEditor({
   }
 
   function handleResetKeyToOriginal() {
-    if (!isTransposed) return
-    const delta = keySemitoneDelta(song.key, originalKey)
-    if (delta == null) {
-      onChange({ key: originalKey })
-      return
+    if (!localOverride) return
+    // Reset the key back to the server's original without discarding any line
+    // edits made while transposed — keep them in the local override (in the
+    // original key) so the user can still commit them via "set as original".
+    const delta = keySemitoneDelta(localOverride.key, originalKey)
+    if (delta == null || delta === 0) return
+    const next = applyTransposeTo(localOverride, delta)
+    if (next.key === originalKey) {
+      setLocalOverride(next)
+      if (song?.id) saveLocalSongOverride(song.id, next)
     }
-    if (delta === 0) return
-    handleTranspose(delta)
   }
 
   function openPicker(info) {
@@ -411,7 +607,7 @@ export default function SongEditor({
 
   function commitPicker(chord) {
     if (!picker) return
-    const line = song.lines.find((l) => l.id === picker.lineId)
+    const line = effectiveSong.lines.find((l) => l.id === picker.lineId)
     if (!line) return closePicker()
     let chords
     if (picker.mode === 'add') {
@@ -425,7 +621,7 @@ export default function SongEditor({
 
   function deletePicker() {
     if (!picker) return
-    const line = song.lines.find((l) => l.id === picker.lineId)
+    const line = effectiveSong.lines.find((l) => l.id === picker.lineId)
     if (!line) return closePicker()
     const chords = line.chords.filter((c) => c.id !== picker.chordId)
     updateLine(picker.lineId, { chords })
@@ -435,9 +631,9 @@ export default function SongEditor({
   // Long-press / right-click on a line: reuse the add-line menu, targeted to
   // insert right after that specific line.
   function handleRequestLineMenu(lineId, x, y) {
-    const idx = song.lines.findIndex((l) => l.id === lineId)
+    const idx = effectiveSong.lines.findIndex((l) => l.id === lineId)
     setFocusedLineId(lineId)
-    openAddMenu(x, y, idx === -1 ? song.lines.length : idx + 1)
+    openAddMenu(x, y, idx === -1 ? effectiveSong.lines.length : idx + 1)
   }
 
   // Long-press / right-click on the meta bar: insert a new line at the very
@@ -485,12 +681,12 @@ export default function SongEditor({
     try {
       const parsed = await importPdf(file)
       if (parsed?.lines?.length) {
-        const patch = { lines: [...song.lines, ...parsed.lines] }
+        const patch = { lines: [...effectiveSong.lines, ...parsed.lines] }
         if (parsed.title) patch.title = parsed.title
         if (parsed.bpm) patch.bpm = parsed.bpm
         if (parsed.timeSignature) patch.timeSignature = parsed.timeSignature
         if (parsed.primaryKey) patch.key = parsed.primaryKey
-        onChange(patch)
+        commitPatch(patch)
       } else {
         alert('Не удалось разобрать PDF. Сервер вернул пустой результат.')
       }
@@ -505,7 +701,7 @@ export default function SongEditor({
 
   const groups =
     viewMode === 'chords'
-      ? collapseRepeats(song.lines.filter((l) => l.type === 'section' || l.type === 'pagebreak' || l.chords.length > 0))
+      ? collapseRepeats(effectiveSong.lines.filter((l) => l.type === 'section' || l.type === 'pagebreak' || l.chords.length > 0))
       : null
   const lineMode = viewMode === 'chords' ? 'chordsOnly' : viewMode === 'lyrics' ? 'lyrics' : 'both'
   const readOnlyChords = viewMode === 'chords'
@@ -516,14 +712,14 @@ export default function SongEditor({
   // actually belongs to.
   const effectiveKeys = {}
   {
-    let current = song.key
-    for (const l of song.lines) {
+    let current = effectiveSong.key
+    for (const l of effectiveSong.lines) {
       if (l.type === 'section' && l.key) current = l.key
       effectiveKeys[l.id] = current
     }
   }
 
-  const lineElements = song.lines.map((line) => (
+  const lineElements = effectiveSong.lines.map((line) => (
     <Line
       key={line.id}
       line={line}
@@ -538,6 +734,8 @@ export default function SongEditor({
       onChordDragStart={handleChordDragStart}
       onRequestLineMenu={handleRequestLineMenu}
       onChordMenu={handleChordMenuRequest}
+      onLineDragStart={handleLineDragStart}
+      draggingLineId={lineDrag?.line.id}
     />
   ))
   if (addMenu) {
@@ -560,8 +758,8 @@ export default function SongEditor({
             </button>
           </Tooltip>
         )}
-        <Tooltip label="Настройки отображения">
-          <button className="icon-btn" onClick={() => setSettingsOpen(true)} aria-label="Настройки отображения">
+        <Tooltip label="Настройки приложения">
+          <button className="icon-btn" onClick={onOpenSettings} aria-label="Настройки приложения">
             <IconSettings />
           </button>
         </Tooltip>
@@ -585,11 +783,12 @@ export default function SongEditor({
       </div>
 
       <MetaBar
-        song={song}
-        onChange={onChange}
+        song={effectiveSong}
+        onChange={commitPatch}
         onTranspose={handleTranspose}
         viewMode={viewMode}
         onViewModeChange={onViewModeChange}
+        isTransposed={isTransposed}
         onRequestOriginalKeyReset={handleRequestOriginalKeyReset}
         onResetOriginalKey={handleResetKeyToOriginal}
         onRequestInsertTop={readOnlyChords ? undefined : handleRequestInsertTop}
@@ -615,8 +814,9 @@ export default function SongEditor({
 
         {viewMode === 'chords'
           ? groups.map((g) => {
-              const line = song.lines.find((l) => l.id === g.key)
-              return <Line key={g.key} line={line} mode="chordsOnly" repeatCount={g.count} />
+              const line = effectiveSong.lines.find((l) => l.id === g.key)
+              const repeatCount = g.count > 1 ? g.count : line?.repeatCount || 1
+              return <Line key={g.key} line={line} mode="chordsOnly" repeatCount={repeatCount} />
             })
           : lineElements}
 
@@ -625,14 +825,14 @@ export default function SongEditor({
             className="canvas-empty-area"
             onDoubleClick={handleDoubleClick}
             onPointerDown={handlePointerDown}
-            onPointerUp={cancelPress}
+            onPointerUp={handlePointerUp}
             onPointerLeave={cancelPress}
             onPointerCancel={cancelPress}
           >
             <div className="canvas-hint">
               {importing
                 ? 'Импорт PDF…'
-                : 'Двойной клик по аккорду — изменить · двойной клик или долгое нажатие — новая строка'}
+                : 'Двойной клик по аккорду — изменить · двойной клик / двойной тап — новая строка'}
             </div>
           </div>
         )}
@@ -663,8 +863,33 @@ export default function SongEditor({
       )}
 
       {drag && (
-        <div className="chord-drag-ghost" style={{ left: drag.x, top: drag.y }}>
+        <div
+          className={'chord-drag-ghost' + (drag.copy ? ' is-copy' : '')}
+          style={{ left: drag.x, top: drag.y }}
+        >
+          {drag.copy && (
+            <span className="chord-drag-copy-badge" aria-hidden>
+              <IconPlus />
+            </span>
+          )}
           {drag.chord.chord}
+        </div>
+      )}
+
+      {lineDrag && (
+        <div
+          className={'line-drag-ghost' + (lineDrag.copy ? ' is-copy' : '')}
+          style={{ left: lineDrag.x, top: lineDrag.y }}
+        >
+          {lineDrag.copy && (
+            <span className="chord-drag-copy-badge" aria-hidden>
+              <IconPlus />
+            </span>
+          )}
+          <IconMusic className="line-drag-ghost-icon" />
+          <span className="line-drag-ghost-text">
+            {[...lineDrag.line.chords].sort((a, b) => a.position - b.position).map((c) => c.chord).join(' | ') || 'Проигрыш'}
+          </span>
         </div>
       )}
 
@@ -702,7 +927,7 @@ export default function SongEditor({
               Сделать текущую тональность оригинальной?
             </div>
             <div className="confirm-modal-text">
-              «{song.key || '—'}» заменит «{originalKey}» как оригинальная тональность песни.
+              «{effectiveSong.key || '—'}» заменит «{originalKey}» как оригинальная тональность песни.
             </div>
             <div className="confirm-modal-actions">
               <button type="button" className="ghost-btn" onClick={handleDismissOriginalKeyDialog}>
@@ -716,16 +941,6 @@ export default function SongEditor({
         </div>
       )}
 
-      <EditorSettingsModal
-        open={settingsOpen}
-        textScale={appliedTextScale}
-        onTextScaleChange={onTextScaleChange}
-        onClose={() => setSettingsOpen(false)}
-        min={TEXT_SCALE_MIN}
-        max={TEXT_SCALE_MAX}
-        step={TEXT_SCALE_STEP}
-      />
-
       {pendingLineDelete && (
         <UndoBanner
           message="Строка удалена"
@@ -736,10 +951,10 @@ export default function SongEditor({
 
       {printPreview && (
         <PrintPreview
-          song={song}
+          song={effectiveSong}
           viewMode={viewMode}
           appliedTextScale={appliedTextScale}
-          onChange={onChange}
+          onChange={commitPatch}
           onClose={() => setPrintPreview(false)}
           onDownload={() => window.print()}
         />

@@ -11,12 +11,14 @@ const VIEW_OPTIONS = [
 
 const ORIGINAL_KEY_LONG_PRESS_MS = 600
 const INSERT_TOP_LONG_PRESS_MS = 500
+const INSERT_TOP_DBL_TAP_MS = 320
 export default function MetaBar({
   song,
   onChange,
   onTranspose,
   viewMode,
   onViewModeChange,
+  isTransposed,
   onRequestOriginalKeyReset,
   onResetOriginalKey,
   onRequestInsertTop,
@@ -24,8 +26,9 @@ export default function MetaBar({
   const keyPressTimer = useRef(null)
   const insertPressTimer = useRef(null)
   const insertLongPressFired = useRef(false)
+  const insertLastTapAtRef = useRef(0)
   const hasOriginalMismatch = Boolean(song.originalKey && song.key && song.originalKey !== song.key)
-  const canRequestOriginalReset = hasOriginalMismatch && typeof onRequestOriginalKeyReset === 'function'
+  const canRequestOriginalReset = Boolean(isTransposed) && typeof onRequestOriginalKeyReset === 'function'
   const canResetOriginalKey = hasOriginalMismatch && typeof onResetOriginalKey === 'function'
   const canInsertTop = typeof onRequestInsertTop === 'function'
 
@@ -77,12 +80,27 @@ export default function MetaBar({
     if (!canInsertTop) return
     if (e.pointerType === 'mouse' && e.button !== 0) return
     insertLongPressFired.current = false
+    if (e.pointerType === 'touch') return
     clearInsertTimer()
     insertPressTimer.current = setTimeout(() => {
       insertPressTimer.current = null
       insertLongPressFired.current = true
       onRequestInsertTop(e.clientX, e.clientY)
     }, INSERT_TOP_LONG_PRESS_MS)
+  }
+
+  function handleInsertPointerUp(e) {
+    clearInsertTimer()
+    if (!canInsertTop) return
+    if (e.pointerType !== 'touch') return
+    const now = Date.now()
+    if (now - insertLastTapAtRef.current < INSERT_TOP_DBL_TAP_MS) {
+      insertLastTapAtRef.current = 0
+      insertLongPressFired.current = true
+      onRequestInsertTop(e.clientX, e.clientY)
+    } else {
+      insertLastTapAtRef.current = now
+    }
   }
 
   function handleInsertPointerEnd() {
@@ -118,7 +136,7 @@ export default function MetaBar({
       className="meta-bar"
       onClickCapture={canInsertTop ? handleInsertClickCapture : undefined}
       onPointerDown={canInsertTop ? handleInsertPointerDown : undefined}
-      onPointerUp={canInsertTop ? handleInsertPointerEnd : undefined}
+      onPointerUp={canInsertTop ? handleInsertPointerUp : undefined}
       onPointerLeave={canInsertTop ? handleInsertPointerEnd : undefined}
       onPointerCancel={canInsertTop ? handleInsertPointerEnd : undefined}
       onDoubleClick={canInsertTop ? handleInsertDoubleClick : undefined}
