@@ -4,6 +4,7 @@ import Line from './Line.jsx'
 import ChordPicker from './ChordPicker.jsx'
 import AddLineMenu from './AddLineMenu.jsx'
 import ChordContextMenu from './ChordContextMenu.jsx'
+import ChordFingeringModal from './ChordFingeringModal.jsx'
 import { IconChevronLeft, IconPlus, IconSettings, IconUpload, IconEye, IconMusic } from './Icons.jsx'
 import ThemeMenu from './ThemeMenu.jsx'
 import Tooltip from './Tooltip.jsx'
@@ -46,6 +47,7 @@ export default function SongEditor({
   const [picker, setPicker] = useState(null)
   const [addMenu, setAddMenu] = useState(null)
   const [chordMenu, setChordMenu] = useState(null)
+  const [fingeringChord, setFingeringChord] = useState(null)
   const [charWidth, setCharWidth] = useState(8.6)
   const [drag, setDrag] = useState(null)
   const [lineDrag, setLineDrag] = useState(null)
@@ -676,6 +678,24 @@ export default function SongEditor({
     }
     closeChordMenu()
   }
+  function handleChordMenuFingering() {
+    if (!chordMenu) return
+    setFingeringChord(chordMenu.chordText)
+    closeChordMenu()
+  }
+  function handleFingeringCommit(newChordName) {
+    if (!chordMenu) return
+    const line = effectiveSong.lines.find((l) => l.id === chordMenu.lineId)
+    if (!line) return
+    const chords = line.chords.map((c) =>
+      c.id === chordMenu.chordId ? { ...c, chord: newChordName } : c
+    )
+    updateLine(line.id, { chords })
+    setFingeringChord(null)
+  }
+  function closeFingeringModal() {
+    setFingeringChord(null)
+  }
 
   function handlePickFile() {
     fileInputRef.current?.click()
@@ -841,7 +861,7 @@ export default function SongEditor({
               {importing
                 ? 'Импорт PDF…'
                 : isCoarsePointer
-                  ? 'Долгое нажатие по аккорду — изменить · долгое нажатие по строке — добавить аккорд · двойной тап — новая строка'
+                  ? 'Долгое нажатие по аккорду — изменить · долгое нажатие по строке — добавить аккорд'
                   : 'Клик по строке — добавить аккорд · двойной клик по аккорду — изменить'}
             </div>
           </div>
@@ -918,7 +938,16 @@ export default function SongEditor({
           anchor={chordMenu.anchor}
           onEdit={handleChordMenuEdit}
           onDelete={handleChordMenuDelete}
+          onFingering={handleChordMenuFingering}
           onClose={closeChordMenu}
+        />
+      )}
+
+      {fingeringChord && (
+        <ChordFingeringModal
+          chordText={fingeringChord}
+          onClose={closeFingeringModal}
+          onCommit={handleFingeringCommit}
         />
       )}
 

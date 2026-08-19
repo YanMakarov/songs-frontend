@@ -1650,6 +1650,272 @@ button { cursor: pointer; }
   border-color: #8a8a8e;
 }
 
+/* Fingering modal ----------------------------------------------------------*/
+.fingering-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 95;
+}
+.fingering-modal {
+  width: min(560px, calc(100vw - 40px));
+  max-height: calc(100vh - 40px);
+  background: var(--surface);
+  border-radius: var(--radius-l);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-pop);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.fingering-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.fingering-modal-title {
+  font-size: 20px;
+  font-weight: 700;
+}
+.fingering-modal-close {
+  background: none;
+  border: none;
+  font-size: 24px;
+  line-height: 1;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-s);
+}
+.fingering-modal-close:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.fingering-modal-body {
+  padding: 16px 20px 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+.fingering-modal-empty {
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+  padding: 24px 0;
+}
+.fingering-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  justify-items: center;
+}
+@media (max-width: 480px) {
+  .fingering-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.fingering-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Chord diagram SVG --------------------------------------------------------*/
+.chord-diagram {
+  color: var(--text);
+  display: block;
+}
+.chord-diagram-fret-label {
+  font-size: 14px;
+  font-weight: 700;
+  fill: var(--text-secondary);
+}
+.chord-diagram-mute {
+  font-size: 14px;
+  font-weight: 700;
+  fill: var(--text-secondary);
+}
+.chord-diagram-dot {
+  fill: var(--text);
+}
+.chord-diagram-open {
+  stroke: var(--text-secondary);
+}
+
+/* Fretboard editor ---------------------------------------------------------*/
+.fretboard-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.fretboard-editor-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.fretboard-editor-input {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 15px;
+  font-family: var(--font-mono);
+  outline: none;
+}
+.fretboard-editor-input:focus {
+  border-color: var(--accent);
+}
+.fretboard-editor-detected {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.fretboard-svg {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg);
+  overflow: hidden;
+}
+.fretboard-fret-number {
+  font-size: 11px;
+  fill: var(--text-secondary);
+  font-weight: 600;
+}
+.fretboard-string-name {
+  font-size: 13px;
+  fill: var(--text-secondary);
+  font-weight: 600;
+}
+.fretboard-position {
+  cursor: pointer;
+}
+.fretboard-dot {
+  transition: r 0.1s ease;
+}
+.fretboard-position:hover .fretboard-dot {
+  r: 12;
+}
+.fretboard-note-label {
+  font-size: 11px;
+  font-weight: 700;
+  pointer-events: none;
+}
+.fretboard-bass-selector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.fretboard-bass-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+.fretboard-bass-btn {
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.fretboard-bass-btn:hover {
+  background: var(--bg-hover);
+}
+.fretboard-bass-btn.active {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
+}
+.fretboard-bass-clear {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.fretboard-bass-clear:hover {
+  background: var(--danger);
+  color: #fff;
+}
+.fretboard-editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.fretboard-editor-actions button {
+  border: none;
+  border-radius: var(--radius-s);
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.fretboard-editor-actions .ghost-btn {
+  background: transparent;
+  color: var(--text-secondary);
+}
+.fretboard-editor-actions .ghost-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.fretboard-editor-actions .accent-btn {
+  background: var(--accent);
+  color: #fff;
+}
+.fretboard-editor-actions .accent-btn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+.fretboard-editor-actions .accent-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Fingering modal tabs */
+.fingering-modal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.fingering-modal-tab {
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--bg);
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.fingering-modal-tab:hover {
+  background: var(--bg-hover);
+  color: var(--text);
+}
+.fingering-modal-editor-link {
+  display: block;
+  margin: 12px auto 0;
+  padding: 6px 16px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.fingering-modal-editor-link:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
 /* Actual print: show only the sheet, hide chrome. */
 @media print {
   @page { margin: 0; }

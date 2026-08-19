@@ -4,7 +4,7 @@ import Tooltip from './Tooltip.jsx'
 import { parseChord, noteToSemitone } from '../lib/music.js'
 
 const DRAG_THRESHOLD = 4
-const ARM_DELAY_MS = 150
+const ARM_DELAY_MS = 500
 const ARM_CANCEL_THRESHOLD = 10
 const DBL_CLICK_MS = 320
 const DBL_TAP_MS = 320
@@ -15,6 +15,34 @@ const isCoarsePointer =
   typeof window !== 'undefined' && typeof window.matchMedia === 'function'
     ? window.matchMedia('(pointer: coarse)').matches
     : false
+
+// A touch release synthesizes a compatibility mousedown→click sequence. When
+// the add-chord picker is opened on release, that first mousedown lands on the
+// picker's full-screen overlay and would close it instantly (open-then-vanish
+// flash, followed by the click opening the lyrics editor). This one-shot
+// capture listener swallows the single synthesized mousedown that targets the
+// overlay, then removes itself (with a short safety timeout). It only ever
+// matches the overlay, so real taps on picker content pass through untouched.
+function suppressNextOverlayMouseDown() {
+  let removed = false
+  let timer = null
+  const onMd = (e) => {
+    const t = e.target
+    if (t && t.closest && t.closest('.picker-overlay')) {
+      e.preventDefault()
+      e.stopPropagation()
+      remove()
+    }
+  }
+  function remove() {
+    if (removed) return
+    removed = true
+    window.removeEventListener('mousedown', onMd, true)
+    if (timer) clearTimeout(timer)
+  }
+  window.addEventListener('mousedown', onMd, true)
+  timer = setTimeout(remove, 500)
+}
 
 // Map a chord string to its root semitone (0-11), for color-coding. Returns
 // null for unparseable chords (no color applied).
@@ -169,10 +197,11 @@ export default function Line({
   }
 
   // Touch-only long-press on a chord strip / instrumental background to add a
-  // new chord — the same hold duration used to "arm" a chord for editing, so
-  // the gesture feels consistent. Quick taps fall through to the row's
-  // double-tap (add line); the synthesized click is blocked by the touch
-  // check in the click handlers above.
+  // new chord. Mirrors the chord-chip gesture: "arm" after ARM_DELAY_MS, then
+  // open the picker on *release*. Opening on release (not during the hold)
+  // plus suppressNextOverlayMouseDown() keeps the picker from being closed by
+  // the touch's synthesized mouse events. Quick taps (< ARM_DELAY_MS) never
+  // arm, so they keep falling through to the row's double-tap → add line.
   function makeAddLongPressHandler(computePosition) {
     return (downEvent) => {
       if (downEvent.pointerType !== 'touch') return
@@ -182,18 +211,24 @@ export default function Line({
       lastPointerTypeRef.current = 'touch'
       const startX = downEvent.clientX
       const startY = downEvent.clientY
+      let armed = false
       let canceled = false
-      let fired = false
+      let opened = false
       let holdTimer = null
+
       const cleanup = () => {
         if (holdTimer) clearTimeout(holdTimer)
-        if (fired) {
-          chordGestureRef.current = false
-          gestureEndedAtRef.current = Date.now()
-        }
+        chordGestureRef.current = false
+        gestureEndedAtRef.current = Date.now()
         window.removeEventListener('pointermove', onMove)
         window.removeEventListener('pointerup', onUp)
         window.removeEventListener('pointercancel', onCancel)
+      }
+      const open = (clientX, clientY) => {
+        if (opened || canceled) return
+        opened = true
+        suppressNextOverlayMouseDown()
+        openAddPicker(clientX, clientY, computePosition)
       }
       const onMove = (ev) => {
         if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > ARM_CANCEL_THRESHOLD) {
@@ -201,15 +236,20 @@ export default function Line({
           cleanup()
         }
       }
-      const onUp = () => cleanup()
-      const onCancel = () => cleanup()
+      const onUp = (ev) => {
+        cleanup()
+        if (armed) open(ev.clientX, ev.clientY)
+      }
+      const onCancel = (ev) => {
+        cleanup()
+        if (armed) open(ev?.clientX ?? startX, ev?.clientY ?? startY)
+      }
       holdTimer = setTimeout(() => {
         if (canceled) return
-        fired = true
+        armed = true
         // Claim the row gesture so the synthesized contextmenu / pointerup
         // don't double-open the add-line menu.
         chordGestureRef.current = true
-        openAddPicker(startX, startY, computePosition)
       }, ARM_DELAY_MS)
       window.addEventListener('pointermove', onMove)
       window.addEventListener('pointerup', onUp)
@@ -276,7 +316,7 @@ export default function Line({
 
   // Two interaction models split by pointer type:
   //  - Touch: a quick tap does nothing (so the page can scroll and the chord
-  //    never flies away). Holding ~150ms "arms" the chord (it blinks, page
+  //    never flies away). Holding ~500ms "arms" the chord (it blinks, page
   //    scroll is locked via a body-level lock). Moving an armed chord drags it;
   //    releasing it without moving opens the Edit/Delete menu.
   //  - Mouse: drag starts immediately on movement (as before); a double-click
