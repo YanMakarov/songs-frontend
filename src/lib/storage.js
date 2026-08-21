@@ -2,76 +2,76 @@
 
 // Re-exported so settings UI has one place to import preferences from; the
 // values themselves belong to the identity module, which the API layer uses.
-export { getDisplayName, setDisplayName } from './identity.js'
+export { getDisplayName, setDisplayName } from "./identity.js";
 
-const THEME_KEY = 'chords_app_theme_v1'
-const VIEW_MODE_KEY = 'chords_app_view_mode_v1'
-const TEXT_SCALE_KEY = 'chords_app_text_scale_v1'
-const COLOR_SCHEME_KEY = 'chords_app_color_scheme_v1'
-const LOCAL_SONG_PREFIX = 'chords_app_local_song_'
-const CUSTOM_SHAPES_KEY = 'chords_app_custom_shapes_v1'
+const THEME_KEY = "chords_app_theme_v1";
+const VIEW_MODE_KEY = "chords_app_view_mode_v1";
+const TEXT_SCALE_KEY = "chords_app_text_scale_v1";
+const COLOR_SCHEME_KEY = "chords_app_color_scheme_v1";
+const LOCAL_SONG_PREFIX = "chords_app_local_song_";
+const CUSTOM_SHAPES_KEY = "chords_app_custom_shapes_v1";
 
 export function uid() {
-  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
+  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 }
 
 export function emptyLine() {
-  return { id: uid(), type: 'line', lyrics: '', chords: [] }
+  return { id: uid(), type: "line", lyrics: "", chords: [] };
 }
 
-export function sectionLine(label = '', key = null) {
-  return { id: uid(), type: 'section', label, key, chords: [] }
+export function sectionLine(label = "", key = null) {
+  return { id: uid(), type: "section", label, key, chords: [] };
 }
 
 // Purely-instrumental line (intro, coda, break…) — chords only, no lyrics,
 // chords are ordered sequentially rather than tied to character position.
 export function instrumentalLine() {
-  return { id: uid(), type: 'chords', chords: [] }
+  return { id: uid(), type: "chords", chords: [] };
 }
 
 // Explicit page break — forces the following content onto a new PDF page.
 export function pagebreakLine() {
-  return { id: uid(), type: 'pagebreak', chords: [] }
+  return { id: uid(), type: "pagebreak", chords: [] };
 }
 
 export function loadTheme() {
-  const v = localStorage.getItem(THEME_KEY)
-  return v === 'light' || v === 'dark' || v === 'system' ? v : 'system'
+  const v = localStorage.getItem(THEME_KEY);
+  return v === "light" || v === "dark" || v === "system" ? v : "system";
 }
 
 export function saveTheme(theme) {
-  localStorage.setItem(THEME_KEY, theme)
+  localStorage.setItem(THEME_KEY, theme);
 }
 
 export function loadViewMode() {
-  const v = localStorage.getItem(VIEW_MODE_KEY)
-  return v === 'chords' || v === 'lyrics' || v === 'both' ? v : 'both'
+  const v = localStorage.getItem(VIEW_MODE_KEY);
+  return v === "chords" || v === "lyrics" || v === "both" ? v : "both";
 }
 
 export function saveViewMode(mode) {
-  localStorage.setItem(VIEW_MODE_KEY, mode)
+  localStorage.setItem(VIEW_MODE_KEY, mode);
 }
 
 export function loadTextScale() {
-  const raw = localStorage.getItem(TEXT_SCALE_KEY)
-  const parsed = raw == null ? NaN : Number(raw)
+  const raw = localStorage.getItem(TEXT_SCALE_KEY);
+  const parsed = raw == null ? NaN : Number(raw);
   if (Number.isFinite(parsed)) {
-    const clamped = Math.min(Math.max(parsed, 0.85), 1.4)
-    return clamped
+    const clamped = Math.min(Math.max(parsed, 0.85), 1.4);
+    return clamped;
   }
-  return 1
+  return 1;
 }
 
 export function saveTextScale(scale) {
-  localStorage.setItem(TEXT_SCALE_KEY, String(scale))
+  localStorage.setItem(TEXT_SCALE_KEY, String(scale));
 }
 
 export function loadColorScheme() {
-  return localStorage.getItem(COLOR_SCHEME_KEY) === 'on'
+  return localStorage.getItem(COLOR_SCHEME_KEY) === "on";
 }
 
 export function saveColorScheme(enabled) {
-  localStorage.setItem(COLOR_SCHEME_KEY, enabled ? 'on' : 'off')
+  localStorage.setItem(COLOR_SCHEME_KEY, enabled ? "on" : "off");
 }
 
 // Per-song local transposition override. While active, the editor shows and
@@ -79,28 +79,32 @@ export function saveColorScheme(enabled) {
 // is flushed to the server only when the user explicitly sets a new original
 // tonality. Lets the user try transpositions without touching the server.
 export function loadLocalSongOverride(songId) {
-  if (!songId) return null
+  if (!songId) return null;
   try {
-    const raw = localStorage.getItem(LOCAL_SONG_PREFIX + songId)
-    if (!raw) return null
-    const parsed = JSON.parse(raw)
-    if (parsed && typeof parsed.key === 'string' && Array.isArray(parsed.lines)) {
-      return { key: parsed.key, lines: parsed.lines }
+    const raw = localStorage.getItem(LOCAL_SONG_PREFIX + songId);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (
+      parsed &&
+      typeof parsed.key === "string" &&
+      Array.isArray(parsed.lines)
+    ) {
+      return { key: parsed.key, lines: parsed.lines };
     }
   } catch {
     // ignore malformed entry
   }
-  return null
+  return null;
 }
 
 export function saveLocalSongOverride(songId, override) {
-  if (!songId || !override) return
-  localStorage.setItem(LOCAL_SONG_PREFIX + songId, JSON.stringify(override))
+  if (!songId || !override) return;
+  localStorage.setItem(LOCAL_SONG_PREFIX + songId, JSON.stringify(override));
 }
 
 export function clearLocalSongOverride(songId) {
-  if (!songId) return
-  localStorage.removeItem(LOCAL_SONG_PREFIX + songId)
+  if (!songId) return;
+  localStorage.removeItem(LOCAL_SONG_PREFIX + songId);
 }
 
 // User-authored fingerings, keyed by exact chord symbol (e.g. "Bm", "Cadd9").
@@ -109,33 +113,33 @@ export function clearLocalSongOverride(songId) {
 // up as its own card and can be removed again.
 function loadAllCustomShapes() {
   try {
-    const raw = localStorage.getItem(CUSTOM_SHAPES_KEY)
-    const parsed = raw ? JSON.parse(raw) : {}
-    return parsed && typeof parsed === 'object' ? parsed : {}
+    const raw = localStorage.getItem(CUSTOM_SHAPES_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" ? parsed : {};
   } catch {
-    return {}
+    return {};
   }
 }
 
 export function loadCustomShapes(chordText) {
-  const all = loadAllCustomShapes()
-  return Array.isArray(all[chordText]) ? all[chordText] : []
+  const all = loadAllCustomShapes();
+  return Array.isArray(all[chordText]) ? all[chordText] : [];
 }
 
 export function addCustomShape(chordText, code) {
-  if (!chordText || !code) return
-  const all = loadAllCustomShapes()
-  const list = Array.isArray(all[chordText]) ? all[chordText] : []
+  if (!chordText || !code) return;
+  const all = loadAllCustomShapes();
+  const list = Array.isArray(all[chordText]) ? all[chordText] : [];
   if (!list.includes(code)) {
-    all[chordText] = [...list, code]
-    localStorage.setItem(CUSTOM_SHAPES_KEY, JSON.stringify(all))
+    all[chordText] = [...list, code];
+    localStorage.setItem(CUSTOM_SHAPES_KEY, JSON.stringify(all));
   }
 }
 
 export function removeCustomShape(chordText, code) {
-  if (!chordText || !code) return
-  const all = loadAllCustomShapes()
-  const list = Array.isArray(all[chordText]) ? all[chordText] : []
-  all[chordText] = list.filter((c) => c !== code)
-  localStorage.setItem(CUSTOM_SHAPES_KEY, JSON.stringify(all))
+  if (!chordText || !code) return;
+  const all = loadAllCustomShapes();
+  const list = Array.isArray(all[chordText]) ? all[chordText] : [];
+  all[chordText] = list.filter((c) => c !== code);
+  localStorage.setItem(CUSTOM_SHAPES_KEY, JSON.stringify(all));
 }
