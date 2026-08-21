@@ -13,7 +13,8 @@ import { discard, flush, getStatus, hasPending, retry, subscribeConflict, subscr
 import { patchSong } from './lib/cacheBridge.js'
 import { queryKeys } from './lib/queryKeys.js'
 import { useSetlistQuery, useSongQuery, useSongsQuery } from './lib/queries.js'
-import { clearRemoteChange, useSetlistSync } from './lib/sync.js'
+import { useSetlistSync } from './lib/sync.js'
+import { clearRemoteChange } from './lib/remoteChanges.js'
 import { useRemoteChanges } from './lib/useRemoteChanges.js'
 import {
   useCreateSongMutation,
@@ -321,7 +322,7 @@ function SongEditorRoute({
   useEffect(() => {
     if (!remoteAuthor) return
     if (hasPending(songId)) return
-    clearRemoteChange(queryClient, songId)
+    clearRemoteChange(songId)
   }, [remoteAuthor, songId, queryClient, song])
 
   useEffect(() => {
@@ -355,7 +356,7 @@ function SongEditorRoute({
   const handleTakeTheirs = useCallback(() => {
     discard(songId)
     setConflict(null)
-    clearRemoteChange(queryClient, songId)
+    clearRemoteChange(songId)
     if (conflict?.error?.current) {
       queryClient.setQueryData(queryKeys.song(songId), conflict.error.current)
     } else {
@@ -371,7 +372,7 @@ function SongEditorRoute({
     if (!mine) return
     discard(songId)
     setConflict(null)
-    clearRemoteChange(queryClient, songId)
+    clearRemoteChange(songId)
     queryClient.setQueryData(queryKeys.song(songId), { ...mine, rev: conflict.error.currentRev })
     patchSong(queryClient, songId, { lines: mine.lines })
   }, [songId, queryClient, conflict])

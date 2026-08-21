@@ -16,6 +16,7 @@ import { getChanges, getSetlistState } from './api.js'
 import { getAttribution } from './identity.js'
 import { queryKeys } from './queryKeys.js'
 import { sortSongs } from './queries.js'
+import { loadRemoteChanges, noteRemoteChanges } from './remoteChanges.js'
 import { hasPending } from './writeQueue.js'
 
 //: How often to ask while the user is actually looking at the app.
@@ -76,25 +77,6 @@ async function reconcile(queryClient) {
   return state.rev
 }
 
-function noteRemoteChanges(queryClient, ids, byName) {
-  if (!ids.length) return
-  queryClient.setQueryData(queryKeys.remoteChanges(), (prev) => {
-    const next = { ...(prev || {}) }
-    for (const id of ids) next[id] = byName || 'кто-то'
-    return next
-  })
-}
-
-/** Clear the "changed" mark once the user has looked at the song. */
-export function clearRemoteChange(queryClient, songId) {
-  queryClient.setQueryData(queryKeys.remoteChanges(), (prev) => {
-    if (!prev || !(songId in prev)) return prev
-    const next = { ...prev }
-    delete next[songId]
-    return next
-  })
-}
-
 /**
  * Poll the setlist change feed. Mount once, at the top of the app.
  */
@@ -139,7 +121,13 @@ export function useSetlistSync() {
       if (!isVisible()) return schedule()
 
       inFlight = true
-      const since = queryClient.getQueryData(queryKeys.syncRev()) ?? 0
+      const stored = queryClient.getQueryData(queryKeys.syncRev())
+      // No cursor yet means a first visit or a cleared cache. "Изменено"
+      // means "changed since you last looked", and there is no such moment to
+      // compare against — marking the whole setlist would be noise the user
+      // then has to click through one song at a time.
+      const coldStart = stored == null
+      const since = stored ?? 0
       try {
         const result = await getChanges(since)
         failures = 0
@@ -149,16 +137,15 @@ export function useSetlistSync() {
           queryClient.setQueryData(queryKeys.syncRev(), rev)
         } else {
           const ourName = getAttribution()
-          const touched = []
-          let lastAuthor = null
+          const touchedBy = {}
           for (const change of result.changes || []) {
             const id = applyChange(queryClient, change, ourName)
-            if (id) {
-              touched.push(id)
-              lastAuthor = change.updatedBy
-            }
+            // Attribution is per song: taking the last author of the batch
+            // and pinning it on every entry tells the user a plain untruth
+            // about who changed what.
+            if (id && !coldStart) touchedBy[id] = change.updatedBy
           }
-          noteRemoteChanges(queryClient, touched, lastAuthor)
+          noteRemoteChanges(touchedBy)
           queryClient.setQueryData(queryKeys.syncRev(), result.rev)
         }
       } catch (err) {
@@ -181,6 +168,7 @@ export function useSetlistSync() {
     }
 
     // First pass on mount, then on every return of attention.
+    void loadRemoteChanges()
     void tick()
     document.addEventListener('visibilitychange', onVisibility)
     window.addEventListener('focus', onVisibility)

@@ -10,6 +10,4 @@ export const queryKeys = {
   //: Cursor into the setlist change feed. Persisted with the rest of the
   //: cache so a reload resumes where it left off instead of re-syncing.
   syncRev: () => ['sync', 'rev'],
-  //: Ids changed by someone else since the user last looked at them.
-  remoteChanges: () => ['sync', 'remote-changes'],
 }
