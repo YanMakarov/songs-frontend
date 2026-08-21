@@ -509,8 +509,22 @@ button { cursor: pointer; }
 .is-locked .line-drag-handle,
 .is-locked .fab,
 .is-locked .add-line-menu,
-.is-locked .repeat-clear {
+.is-locked .repeat-clear,
+/* Подсказки и приглашения к правке. Все они объясняют, как что-то изменить,
+   и в режиме просмотра только зашумляют песню. Настоящие сведения — счётчик
+   повторов «×2», тональность куплета — остаются: это часть песни, а не
+   инструмент её правки. */
+.is-locked .repeat-pill.is-empty,
+.is-locked .section-key-pill.is-empty,
+.is-locked .instrumental-hint,
+.is-locked .canvas-hint {
   display: none !important;
+}
+
+/* Пустая строка сохраняет свою высоту — это пауза в песне, — но перестаёт
+   предлагать себя для ввода. */
+.is-locked .lyrics-strip.is-empty::after {
+  content: "";
 }
 
 /* Всё, что открывает правку по нажатию. Перечислено поимённо, а не через
@@ -531,6 +545,14 @@ button { cursor: pointer; }
 .is-locked .chord-chip {
   pointer-events: auto;
   cursor: pointer;
+}
+
+/* Счётчик повторов и тональность куплета перестают быть кнопками —
+   читаются как подписи. */
+.is-locked .repeat-pill,
+.is-locked .section-key-pill {
+  pointer-events: none;
+  cursor: default;
 }
 
 .is-locked .title-input,
