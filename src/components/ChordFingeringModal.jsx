@@ -96,7 +96,7 @@ export default function ChordFingeringModal({ chordText, selectedVoicing, onClos
           ) : (
             <>
               <div className="fingering-grid">
-                {matches.map(({ shape, frets, matchMask }) => {
+                {matches.map(({ shape, frets }) => {
                   const code = encodeVoicing(frets)
                   const isSelected = selectedVoicing === code
                   return (

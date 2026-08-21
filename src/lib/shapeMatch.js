@@ -31,36 +31,27 @@ export function computeShapeFrets(rootString, offsets, targetRoot) {
 }
 
 // Compares a shape (moved to targetRoot) against a target chord (quality
-// interval set + optional bass). Returns frets/startFret/barre for display,
-// whether it's a full match, and which strings' notes are still chord tones
-// even when it isn't (for the "dimmed but partially lit" rendering).
+// interval set + optional bass). A shape only "fits" when the two note sets
+// match exactly: every note it sounds is a chord tone, and every chord tone
+// (the bass included, if given) is actually present in the shape. Anything
+// less isn't shown at all — no partial credit.
 export function matchShape(shape, targetRoot, qualityIntervals, bass = null) {
   const { rootString, offsets } = shape
   const frets = computeShapeFrets(rootString, offsets, targetRoot)
   const shapeIntervals = computeShapeIntervals(rootString, offsets)
+  const shapeIntervalSet = new Set(Object.values(shapeIntervals))
 
   const targetSet = new Set(qualityIntervals.map((iv) => iv % 12))
   const bassInterval = bass !== null && bass !== undefined ? ((bass - targetRoot) % 12 + 12) % 12 : null
 
-  const matchMask = new Array(NUM_STRINGS).fill(false)
-  let allMatch = true
-  let anyMatch = false
-  for (let s = 0; s < NUM_STRINGS; s++) {
-    if (frets[s] < 0) continue
-    const iv = shapeIntervals[s]
-    const ok = targetSet.has(iv)
-    matchMask[s] = ok
-    if (ok) anyMatch = true
-    else allMatch = false
+  let fullMatch = true
+  for (const iv of shapeIntervalSet) {
+    if (!targetSet.has(iv)) fullMatch = false
   }
-  // Every target interval must also be present somewhere in the shape for
-  // it to count as a real match, not just "doesn't contradict".
-  const shapeIntervalSet = new Set(Object.values(shapeIntervals))
   for (const iv of targetSet) {
-    if (!shapeIntervalSet.has(iv)) allMatch = false
+    if (!shapeIntervalSet.has(iv)) fullMatch = false
   }
-  const bassOk = bassInterval === null || shapeIntervalSet.has(bassInterval)
-  const fullMatch = allMatch && bassOk
+  if (bassInterval !== null && !shapeIntervalSet.has(bassInterval)) fullMatch = false
 
-  return { frets, fullMatch, matchMask, anyMatch }
+  return { frets, fullMatch }
 }

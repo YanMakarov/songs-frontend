@@ -87,7 +87,8 @@ export default function App() {
   }, [])
 
   const handleCreate = useCallback(async () => {
-    const created = await apiCreateSong()
+    // Create song without default key - let user set it or detect from chords
+    const created = await apiCreateSong({ key: '', originalKey: '' })
     handleSongMetadataChange(created)
     return created.id
   }, [handleSongMetadataChange])
@@ -529,8 +530,13 @@ function isPristineSong(song) {
 
 function shouldSeedOriginalKey(song) {
   if (!song) return false
-  if (!hasOriginalKeyValue(song)) return true
-  return song.originalKey === 'C' && song.key === 'C' && isPristineSong(song)
+  // Don't seed original key if it's already set to something meaningful
+  if (hasOriginalKeyValue(song)) return false
+  // Only seed if we have a valid key and it's not empty
+  if (typeof song.key === 'string' && song.key.trim().length > 0) {
+    return isPristineSong(song)
+  }
+  return false
 }
 
 function sortSongs(list) {

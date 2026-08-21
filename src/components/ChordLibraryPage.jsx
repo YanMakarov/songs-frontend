@@ -120,7 +120,9 @@ export default function ChordLibraryPage({ onBack, initialChord }) {
   const qualityIntervals = getQualityIntervals(quality) || [0, 4, 7]
 
   const results = useMemo(() => {
-    return shapes.map((shape) => ({ shape, ...matchShape(shape, root, qualityIntervals, bass) }))
+    return shapes
+      .map((shape) => ({ shape, ...matchShape(shape, root, qualityIntervals, bass) }))
+      .filter((r) => r.fullMatch)
   }, [shapes, root, qualityIntervals, bass])
 
   async function handleDelete(e, shapeId) {
@@ -196,9 +198,11 @@ export default function ChordLibraryPage({ onBack, initialChord }) {
             <div className="chord-library-hint">Загрузка…</div>
           ) : shapes.length === 0 ? (
             <div className="chord-library-hint">В библиотеке пока нет форм — добавьте первую</div>
+          ) : results.length === 0 ? (
+            <div className="chord-library-hint">Ни одна форма не подходит к «{chordName}» — добавьте новую</div>
           ) : (
             <div className="fingering-grid">
-              {results.map(({ shape, frets, fullMatch, matchMask }) => (
+              {results.map(({ shape, frets }) => (
                 <div key={shape.id} className="fingering-card chord-library-card">
                   <button type="button" className="fingering-card-delete" aria-label="Удалить форму" onClick={(e) => handleDelete(e, shape.id)}>
                     <IconClose />
@@ -208,8 +212,6 @@ export default function ChordLibraryPage({ onBack, initialChord }) {
                     startFret={computeStartFret(frets)}
                     barre={detectBarre(frets)}
                     root={root}
-                    matchMask={fullMatch ? null : matchMask}
-                    dimmed={!fullMatch}
                   />
                   <span className="fingering-card-label">{shape.name || (shape.rootString === 0 ? 'E-форма' : shape.rootString === 1 ? 'A-форма' : '')}</span>
                 </div>

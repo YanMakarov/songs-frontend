@@ -1842,28 +1842,6 @@ button { cursor: pointer; }
   fill: #39ff9d;
   filter: drop-shadow(0 0 3px #39ff9d);
 }
-.chord-diagram-dot-group--dim .chord-diagram-dot {
-  fill: #3a4a44;
-  filter: none;
-}
-.chord-diagram-dot-group--dim .chord-diagram-degree {
-  fill: #7a8b85;
-}
-.chord-diagram-open--dim {
-  stroke: #4a5450;
-  opacity: 0.5;
-}
-.chord-diagram-barre--dim {
-  fill: #3a4a44;
-  filter: none;
-}
-.chord-diagram--dimmed .chord-diagram-structural {
-  opacity: 0.35;
-}
-.chord-diagram--dimmed {
-  background: #050506;
-}
-
 /* Fretboard editor ---------------------------------------------------------*/
 .fretboard-editor {
   display: flex;

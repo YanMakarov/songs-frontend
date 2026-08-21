@@ -1,4 +1,4 @@
-import { useRef } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import SegmentedControl from './SegmentedControl.jsx'
 import { TIME_SIGNATURES } from '../lib/music.js'
 import Tooltip from './Tooltip.jsx'
@@ -12,6 +12,24 @@ const VIEW_OPTIONS = [
 const ORIGINAL_KEY_LONG_PRESS_MS = 600
 const INSERT_TOP_LONG_PRESS_MS = 500
 const INSERT_TOP_DBL_TAP_MS = 320
+
+// Extract all chords from song lines for key detection
+function extractAllChords(song) {
+  const chords = []
+  if (Array.isArray(song.lines)) {
+    for (const line of song.lines) {
+      if (Array.isArray(line.chords)) {
+        for (const chordObj of line.chords) {
+          if (chordObj.chord && typeof chordObj.chord === 'string') {
+            chords.push(chordObj.chord)
+          }
+        }
+      }
+    }
+  }
+  return chords
+}
+
 export default function MetaBar({
   song,
   onChange,
@@ -22,6 +40,7 @@ export default function MetaBar({
   onRequestOriginalKeyReset,
   onResetOriginalKey,
   onRequestInsertTop,
+  onDetectKey, // New prop for key detection callback
 }) {
   const keyPressTimer = useRef(null)
   const insertPressTimer = useRef(null)
@@ -31,6 +50,16 @@ export default function MetaBar({
   const canRequestOriginalReset = Boolean(isTransposed) && typeof onRequestOriginalKeyReset === 'function'
   const canResetOriginalKey = hasOriginalMismatch && typeof onResetOriginalKey === 'function'
   const canInsertTop = typeof onRequestInsertTop === 'function'
+  
+  // Check if we should show detect key button
+  const [showDetectKey, setShowDetectKey] = useState(false)
+  const hasChords = extractAllChords(song).length > 0
+  const hasNoKey = !song.key || song.key.trim() === ''
+  
+  useEffect(() => {
+    // Show detect key button when there are chords but no key set
+    setShowDetectKey(hasChords && hasNoKey)
+  }, [hasChords, hasNoKey])
 
   function clearKeyPressTimer() {
     if (keyPressTimer.current) {
@@ -131,6 +160,16 @@ export default function MetaBar({
     }
   }
 
+  // Handle key detection
+  function handleDetectKey() {
+    if (typeof onDetectKey === 'function') {
+      onDetectKey()
+    }
+  }
+
+  // Display key or placeholder
+  const displayKey = song.key || '?'
+
   return (
     <div
       className="meta-bar"
@@ -160,11 +199,26 @@ export default function MetaBar({
         >
           <label>Тон.</label>
           <input
-            value={song.key}
-            placeholder="C"
-            onChange={(e) => onChange({ key: e.target.value })}
+            value={displayKey}
+            placeholder="?"
+            onChange={(e) => {
+              const newValue = e.target.value
+              // If user types "?" or clears the field, store as empty string
+              onChange({ key: newValue === '?' ? '' : newValue })
+            }}
           />
         </div>
+
+        {showDetectKey && (
+          <button
+            type="button"
+            className="detect-key-btn"
+            onClick={handleDetectKey}
+            aria-label="Определить тональность"
+          >
+            Определить тональность
+          </button>
+        )}
 
         <div className="meta-field">
           <label>BPM</label>
