@@ -54,6 +54,19 @@ export function setDisplayName(name) {
   }
 }
 
+/**
+ * The string the server will record as `updated_by` for our writes.
+ *
+ * Mirrors the fallback in the backend's `get_author`, so the sync layer can
+ * recognise its own edits coming back through the change feed and not
+ * announce them as somebody else's.
+ */
+export function getAttribution() {
+  const name = getDisplayName()
+  if (name) return name.slice(0, 60)
+  return `anon-${getClientId().slice(0, 8)}`
+}
+
 // Header values must be ISO-8859-1 — `fetch` throws outright on "Вася" — so
 // the name travels percent-encoded and the server decodes it.
 export function identityHeaders() {

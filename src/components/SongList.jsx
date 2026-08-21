@@ -24,6 +24,7 @@ export default function SongList({
   onUndoDelete,
   pendingDelete,
   onReorder,
+  remoteChanges,
   setlist,
   onSetlistRename,
   theme,
@@ -348,7 +349,14 @@ export default function SongList({
                   <IconGrip />
                 </button>
                 <div className="song-card-main">
-                  <div className="song-card-title">{song.title || 'Без названия'}</div>
+                  <div className="song-card-title">
+                    {song.title || 'Без названия'}
+                    {remoteChanges?.[song.id] && (
+                      <span className="song-card-changed" title={`Изменили — ${remoteChanges[song.id]}`}>
+                        изменено
+                      </span>
+                    )}
+                  </div>
                   <div className="song-card-meta">{formatMeta(song)}</div>
                 </div>
                 <Tooltip label="Удалить песню">

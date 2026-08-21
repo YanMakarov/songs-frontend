@@ -8,9 +8,11 @@ import { loadTheme, saveTheme, loadViewMode, saveViewMode, loadTextScale, saveTe
 import { applyTheme } from './lib/theme.js'
 import AppSettingsModal from './components/AppSettingsModal.jsx'
 import { UNDO_TIMEOUT_MS } from './lib/undo.js'
-import { discard, flush, getStatus, retry, subscribeConflict, subscribeStatus } from './lib/writeQueue.js'
+import { discard, flush, getStatus, hasPending, retry, subscribeConflict, subscribeStatus } from './lib/writeQueue.js'
 import { patchSong } from './lib/cacheBridge.js'
 import { useSetlistQuery, useSongQuery, useSongsQuery } from './lib/queries.js'
+import { clearRemoteChange, useSetlistSync } from './lib/sync.js'
+import { useRemoteChanges } from './lib/useRemoteChanges.js'
 import {
   useCreateSongMutation,
   useDeleteSongMutation,
@@ -19,7 +21,12 @@ import {
 } from './lib/mutations.js'
 
 export default function App() {
+  // Keeps this tab in step with the rest of the group. One cheap GET on focus
+  // and on a timer while visible; nothing at all while hidden.
+  useSetlistSync()
+
   const { data: songs = [], isPending: songsPending, error: songsError, refetch: refetchSongs } = useSongsQuery()
+  const remoteChanges = useRemoteChanges()
   const { data: setlist } = useSetlistQuery()
   const [pendingDelete, setPendingDelete] = useState(null)
   const [theme, setTheme] = useState(loadTheme)
@@ -144,6 +151,7 @@ export default function App() {
             onUndoDelete={handleUndoDelete}
             pendingDelete={pendingDelete}
             onReorder={handleReorderSong}
+            remoteChanges={remoteChanges}
             setlist={setlist}
             onSetlistRename={handleSetlistRename}
             theme={theme}
@@ -190,6 +198,7 @@ function SongListRoute({
   onUndoDelete,
   pendingDelete,
   onReorder,
+  remoteChanges,
   setlist,
   onSetlistRename,
   theme,
@@ -239,6 +248,7 @@ function SongListRoute({
       onUndoDelete={onUndoDelete}
       pendingDelete={pendingDelete}
       onReorder={onReorder}
+      remoteChanges={remoteChanges}
       setlist={setlist}
       onSetlistRename={onSetlistRename}
       theme={theme}
@@ -261,9 +271,11 @@ function SongEditorRoute({
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const { data: song, isPending, error, refetch } = useSongQuery(songId)
+  const remoteChanges = useRemoteChanges()
   const [saveError, setSaveError] = useState(null)
   const [conflict, setConflict] = useState(null)
   const songRef = useRef(null)
+  const remoteAuthor = remoteChanges[songId] || null
 
   useEffect(() => {
     songRef.current = song
@@ -297,6 +309,15 @@ function SongEditorRoute({
     }
   }, [songId])
 
+  // Someone else's edit is applied silently unless we are sitting on unsent
+  // work — the sync layer skips the refetch in that case, so here the mark
+  // just gets cleared once there is nothing left to warn about.
+  useEffect(() => {
+    if (!remoteAuthor) return
+    if (hasPending(songId)) return
+    clearRemoteChange(queryClient, songId)
+  }, [remoteAuthor, songId, queryClient, song])
+
   useEffect(() => {
     // ApiError carries the HTTP status; anything else is a transport failure
     // and the query layer keeps retrying it on its own.
@@ -328,8 +349,9 @@ function SongEditorRoute({
   const handleResolveConflict = useCallback(() => {
     discard(songId)
     setConflict(null)
+    clearRemoteChange(queryClient, songId)
     refetch()
-  }, [songId, refetch])
+  }, [songId, refetch, queryClient])
 
   // With a warm cache there is nothing to wait for — this only shows on a
   // first-ever visit to a song.
@@ -392,6 +414,14 @@ function SongEditorRoute({
           </span>
           <button type="button" onClick={handleResolveConflict}>
             Обновить
+          </button>
+        </div>
+      )}
+      {!conflict && remoteAuthor && hasPending(songId) && (
+        <div className="save-banner save-banner-remote" role="status">
+          <span>{`Песню изменили — ${remoteAuthor}`}</span>
+          <button type="button" onClick={handleResolveConflict}>
+            Показать
           </button>
         </div>
       )}

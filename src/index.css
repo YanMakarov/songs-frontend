@@ -399,6 +399,29 @@ button { cursor: pointer; }
 }
 .save-banner button:active { transform: scale(0.95); }
 
+/* Marks a song another member changed since this tab last looked at it.
+   Quiet on purpose: it is information, not something to act on. */
+.song-card-changed {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--chip-bg);
+  color: var(--chip-text);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  vertical-align: 1px;
+}
+
+/* A remote edit arrived while local work was still unsent — not a failure,
+   so it must not borrow the error colour. */
+.save-banner-remote {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
 /* Someone else's edit landed first — not an error on our side, so it reads as
    information rather than failure. */
 .save-banner-conflict {
