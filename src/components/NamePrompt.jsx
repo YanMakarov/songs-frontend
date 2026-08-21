@@ -105,7 +105,7 @@ export default function NamePrompt() {
           className="settings-text-input"
           value={name}
           onChange={(e) => setName(e.target.value)}
-          placeholder="Например, Ян"
+          placeholder="Например, Иннокентий"
           maxLength={60}
           autoComplete="off"
           autoFocus

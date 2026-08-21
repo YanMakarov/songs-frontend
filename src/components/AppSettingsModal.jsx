@@ -113,7 +113,7 @@ export default function AppSettingsModal({
               className="settings-text-input"
               value={name}
               onChange={handleNameChange}
-              placeholder="Например, Ян"
+              placeholder="Например, Иннокентий"
               maxLength={60}
               autoComplete="off"
             />
