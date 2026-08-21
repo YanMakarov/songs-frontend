@@ -15,8 +15,21 @@ import {
   updateSetlist,
   updateSong,
 } from './api.js'
+import { blockedByLock } from './lockMode.js'
 import { queryKeys } from './queryKeys.js'
 import { sortSongs } from './queries.js'
+
+class LockedError extends Error {
+  constructor() {
+    super('Правки запрещены: включён режим просмотра')
+    this.name = 'LockedError'
+  }
+}
+
+/** Refuse a write while the view is locked. See lockMode.js. */
+function refuseIfLocked() {
+  if (blockedByLock()) throw new LockedError()
+}
 
 /** Drop `lines` so a summary never overwrites the detail's line array. */
 function toSummary(detail) {
@@ -40,7 +53,10 @@ function removeSong(list, songId) {
 export function useCreateSongMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (payload) => createSong(payload),
+    mutationFn: (payload) => {
+      refuseIfLocked()
+      return createSong(payload)
+    },
     onSuccess: (created) => {
       queryClient.setQueryData(queryKeys.song(created.id), created)
       queryClient.setQueryData(queryKeys.songs(), (prev) => upsertSong(prev, created))
@@ -51,7 +67,10 @@ export function useCreateSongMutation() {
 export function useDeleteSongMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: ({ songId, rev }) => deleteSong(songId, { rev }),
+    mutationFn: ({ songId, rev }) => {
+      refuseIfLocked()
+      return deleteSong(songId, { rev })
+    },
     onMutate: async ({ songId }) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.songs() })
       const previous = queryClient.getQueryData(queryKeys.songs())
@@ -72,7 +91,10 @@ export function useDeleteSongMutation() {
 export function useRestoreSongMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (songId) => restoreSong(songId),
+    mutationFn: (songId) => {
+      refuseIfLocked()
+      return restoreSong(songId)
+    },
     onSuccess: (restored) => {
       queryClient.setQueryData(queryKeys.song(restored.id), restored)
       queryClient.setQueryData(queryKeys.songs(), (prev) => upsertSong(prev, restored))
@@ -84,7 +106,10 @@ export function useRestoreSongMutation() {
 export function useReorderSongsMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (order) => reorderSongs(order),
+    mutationFn: (order) => {
+      refuseIfLocked()
+      return reorderSongs(order)
+    },
     onMutate: async (order) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.songs() })
       const previous = queryClient.getQueryData(queryKeys.songs())
@@ -105,7 +130,10 @@ export function useReorderSongsMutation() {
 export function useUpdateSetlistMutation() {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: (patch) => updateSetlist(patch),
+    mutationFn: (patch) => {
+      refuseIfLocked()
+      return updateSetlist(patch)
+    },
     onMutate: async (patch) => {
       await queryClient.cancelQueries({ queryKey: queryKeys.setlist() })
       const previous = queryClient.getQueryData(queryKeys.setlist())

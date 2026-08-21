@@ -8,6 +8,7 @@ import { loadTheme, saveTheme, loadViewMode, saveViewMode, loadTextScale, saveTe
 import { applyTheme } from './lib/theme.js'
 import AppSettingsModal from './components/AppSettingsModal.jsx'
 import ConflictModal from './components/ConflictModal.jsx'
+import NamePrompt from './components/NamePrompt.jsx'
 import { UNDO_TIMEOUT_MS } from './lib/undo.js'
 import { discard, flush, getStatus, hasPending, retry, subscribeConflict, subscribeStatus } from './lib/writeQueue.js'
 import { patchSong } from './lib/cacheBridge.js'
@@ -179,6 +180,7 @@ export default function App() {
       <Route path="/chords-library" element={<ChordLibraryRoute />} />
       <Route path="*" element={<Navigate to="/songs" replace />} />
       </Routes>
+      <NamePrompt />
       <AppSettingsModal
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}

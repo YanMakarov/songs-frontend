@@ -399,6 +399,141 @@ button { cursor: pointer; }
 }
 .save-banner button:active { transform: scale(0.95); }
 
+.name-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.name-prompt-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+/* --- Замок правок ------------------------------------------------------ */
+
+.lock-btn {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+  /* The hold must not double as a scroll or a text selection. */
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+.lock-btn.is-locked { color: var(--accent); }
+
+.lock-ring {
+  position: absolute;
+  inset: 2px;
+  width: calc(100% - 4px);
+  height: calc(100% - 4px);
+  transform: rotate(-90deg);
+  pointer-events: none;
+}
+.lock-ring-track { fill: none; stroke: transparent; stroke-width: 2; }
+.lock-btn.is-holding .lock-ring-track { stroke: var(--surface-pressed); }
+
+.lock-ring-fill {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  opacity: 0;
+}
+/* Duration matches HOLD_MS in LockButton.jsx — the ring completing and the
+   toggle firing have to be the same moment, or the control feels dishonest. */
+.lock-btn.is-holding .lock-ring-fill {
+  opacity: 1;
+  animation: lock-fill 600ms linear forwards;
+}
+
+@keyframes lock-fill {
+  to { stroke-dashoffset: 0; }
+}
+
+.lock-glyph {
+  display: inline-flex;
+  transition: transform 160ms ease;
+}
+.lock-btn.is-holding .lock-glyph { transform: scale(0.88); }
+.lock-btn.is-toggled .lock-glyph { animation: lock-pop 380ms cubic-bezier(0.2, 1.4, 0.4, 1); }
+
+@keyframes lock-pop {
+  0% { transform: scale(0.85); }
+  45% { transform: scale(1.22) rotate(-7deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Keep the ring as a progress indicator — it carries information — but
+     drop the springy flourish. */
+  .lock-btn.is-toggled .lock-glyph { animation: none; }
+  .lock-glyph { transition: none; }
+}
+
+/* Полоска состояния, чтобы режим нельзя было не заметить */
+.lock-notice {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 5px 12px;
+  background: var(--chip-bg);
+  color: var(--chip-text);
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+/* --- Что отключается в режиме просмотра --------------------------------
+   Только средства правки. Тема, размер текста, режим отображения и прокрутка
+   остаются доступны: человек, читающий с экрана, именно ими и пользуется. */
+
+.is-locked .song-card-delete,
+.is-locked .song-card-handle,
+.is-locked .line-delete,
+.is-locked .line-drag-handle,
+.is-locked .fab,
+.is-locked .add-line-menu,
+.is-locked .repeat-clear {
+  display: none !important;
+}
+
+.is-locked .lyrics-strip,
+.is-locked .chords-strip,
+.is-locked .chords-only-row,
+.is-locked .chord-token,
+.is-locked .section-content,
+.is-locked .title-input,
+.is-locked .meta-bar input,
+.is-locked .meta-bar select,
+/* Everything in the meta bar except display controls: the segmented
+   view-mode switch is precisely what someone reading from the screen reaches
+   for, so it stays live. */
+.is-locked .meta-bar button:not(.icon-btn):not(.lock-btn):not(.segmented button) {
+  pointer-events: none;
+}
+.is-locked .segmented,
+.is-locked .segmented button {
+  pointer-events: auto;
+}
+
+.is-locked .title-input,
+.is-locked .meta-bar input {
+  /* Read-only should look settled, not broken. */
+  opacity: 1;
+  cursor: default;
+}
+
 .conflict-modal {
   width: min(760px, 94vw);
   max-height: 86vh;

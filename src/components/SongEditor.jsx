@@ -16,6 +16,7 @@ import PrintPreview from './PrintPreview.jsx'
 import { ApiError, importPdf } from '../lib/api.js'
 import { UNDO_TIMEOUT_MS } from '../lib/undo.js'
 import UndoBanner from './UndoBanner.jsx'
+import LockButton from './LockButton.jsx'
 
 const LONG_PRESS_MS = 500
 const DBL_TAP_MS = 320
@@ -828,6 +829,7 @@ export default function SongEditor({
             </button>
           </Tooltip>
         )}
+        <LockButton />
         <Tooltip label="Настройки приложения">
           <button className="icon-btn" onClick={onOpenSettings} aria-label="Настройки приложения">
             <IconSettings />

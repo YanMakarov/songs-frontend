@@ -3,6 +3,7 @@ import { IconGrip, IconPlus, IconTrash, IconSettings, IconMusic } from './Icons.
 import ThemeMenu from './ThemeMenu.jsx'
 import Tooltip from './Tooltip.jsx'
 import ConfirmModal from './ConfirmModal.jsx'
+import LockButton from './LockButton.jsx'
 import UndoBanner from './UndoBanner.jsx'
 
 function formatMeta(song) {
@@ -271,6 +272,7 @@ export default function SongList({
             </button>
           </Tooltip>
         )}
+        <LockButton />
         {onOpenSettings && (
           <Tooltip label="Настройки приложения">
             <button

@@ -21,6 +21,7 @@
 
 import { queryKeys } from './queryKeys.js'
 import { sortSongs } from './queries.js'
+import { blockedByLock } from './lockMode.js'
 import { enqueue, subscribeConflict, subscribeSaved } from './writeQueue.js'
 
 function stripLines(detail) {
@@ -85,6 +86,10 @@ export function attachWriteQueue(queryClient) {
  * send as `If-Match`.
  */
 export function patchSong(queryClient, songId, patch) {
+  // Guarded here rather than only in the interface: hiding buttons stops the
+  // obvious paths, but keyboard shortcuts, drag handlers and anything added
+  // later would all have to remember. One choke point cannot be forgotten.
+  if (blockedByLock()) return
   const current = queryClient.getQueryData(queryKeys.song(songId))
   if (!current) return
   queryClient.setQueryData(queryKeys.song(songId), { ...current, ...patch })
