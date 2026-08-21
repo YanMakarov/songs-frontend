@@ -148,8 +148,10 @@ button { cursor: pointer; }
 }
 .topbar-title-input:focus { outline: none; box-shadow: 0 0 0 2px var(--accent) inset; }
 .icon-btn {
-  width: 34px;
-  height: 34px;
+  /* 40px is the smallest comfortable touch target; the header is used with a
+     thumb, often mid-song. */
+  width: 40px;
+  height: 40px;
   border-radius: 50%;
   border: none;
   background: var(--surface-2);
@@ -414,8 +416,8 @@ button { cursor: pointer; }
 
 .lock-btn {
   position: relative;
-  width: 34px;
-  height: 34px;
+  width: 40px;
+  height: 40px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -433,9 +435,9 @@ button { cursor: pointer; }
 
 .lock-ring {
   position: absolute;
-  inset: 2px;
-  width: calc(100% - 4px);
-  height: calc(100% - 4px);
+  inset: 3px;
+  width: calc(100% - 6px);
+  height: calc(100% - 6px);
   transform: rotate(-90deg);
   pointer-events: none;
 }
@@ -480,9 +482,11 @@ button { cursor: pointer; }
   .lock-glyph { transition: none; }
 }
 
-/* Полоска состояния, чтобы режим нельзя было не заметить */
+/* The lock is on by default, so its state has to explain itself — otherwise
+   a first-time user meets an app where nothing responds. */
 .lock-notice {
   display: flex;
+  cursor: default;
   align-items: center;
   justify-content: center;
   gap: 8px;
@@ -495,8 +499,9 @@ button { cursor: pointer; }
 }
 
 /* --- Что отключается в режиме просмотра --------------------------------
-   Только средства правки. Тема, размер текста, режим отображения и прокрутка
-   остаются доступны: человек, читающий с экрана, именно ими и пользуется. */
+   Только средства правки. Тема, размер текста, режим отображения,
+   транспонирование и прокрутка остаются доступны: именно ими и пользуется
+   человек, читающий с экрана. */
 
 .is-locked .song-card-delete,
 .is-locked .song-card-handle,
@@ -508,28 +513,29 @@ button { cursor: pointer; }
   display: none !important;
 }
 
+/* Всё, что открывает правку по нажатию. Перечислено поимённо, а не через
+   запрет на контейнер: иначе под него попадают и средства просмотра. */
 .is-locked .lyrics-strip,
 .is-locked .chords-strip,
 .is-locked .chords-only-row,
-.is-locked .chord-token,
 .is-locked .section-content,
 .is-locked .title-input,
 .is-locked .meta-bar input,
-.is-locked .meta-bar select,
-/* Everything in the meta bar except display controls: the segmented
-   view-mode switch is precisely what someone reading from the screen reaches
-   for, so it stays live. */
-.is-locked .meta-bar button:not(.icon-btn):not(.lock-btn):not(.segmented button) {
+.is-locked .meta-bar select {
   pointer-events: none;
 }
-.is-locked .segmented,
-.is-locked .segmented button {
+
+/* Аккорды остаются нажимаемыми: тап открывает аппликатуру, а не правку.
+   Посмотреть, как что играется, — главная причина держать песню открытой. */
+.is-locked .chord-token,
+.is-locked .chord-chip {
   pointer-events: auto;
+  cursor: pointer;
 }
 
 .is-locked .title-input,
 .is-locked .meta-bar input {
-  /* Read-only should look settled, not broken. */
+  /* Только для чтения должно выглядеть спокойно, а не сломано. */
   opacity: 1;
   cursor: default;
 }

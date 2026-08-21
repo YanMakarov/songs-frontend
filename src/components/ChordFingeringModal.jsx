@@ -10,7 +10,17 @@ import { listMovableShapes } from '../lib/api.js'
 // produce this chord at all are left out entirely (unlike the library page,
 // which shows everything so you can compare); only what's actually playable
 // shows up as an option.
-export default function ChordFingeringModal({ chordText, selectedVoicing, onClose, onSelectVoicing, onDeselectVoicing, onOpenLibrary }) {
+export default function ChordFingeringModal({
+  chordText,
+  selectedVoicing,
+  onClose,
+  onSelectVoicing,
+  onDeselectVoicing,
+  onOpenLibrary,
+  // While the song is locked the diagrams are still worth reading — only
+  // choosing a voicing is withheld, because that edits the song.
+  readOnly = false,
+}) {
   const modalRef = useRef(null)
   const [allShapes, setAllShapes] = useState([])
   const [loading, setLoading] = useState(true)
@@ -57,8 +67,10 @@ export default function ChordFingeringModal({ chordText, selectedVoicing, onClos
   function handleCardClick(frets) {
     const code = encodeVoicing(frets)
     if (selectedVoicing === code) {
+      if (readOnly) return
       onDeselectVoicing && onDeselectVoicing()
     } else {
+      if (readOnly) return
       onSelectVoicing && onSelectVoicing(code)
     }
   }

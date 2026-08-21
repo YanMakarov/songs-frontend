@@ -76,7 +76,9 @@ export default function Line({
   onChordMenu,
   onLineDragStart,
   draggingLineId,
-}) {
+  locked,
+  onViewFingering,
+})  {
   const isSection = line.type === 'section'
   const isPageBreak = line.type === 'pagebreak'
   const fieldValue = isSection ? line.label : line.lyrics
@@ -679,11 +681,12 @@ export default function Line({
                 {i > 0 && <span className="sep">|</span>}
                 <span
                   className={'chord-token' + (armedChordId === c.id ? ' is-armed' : '')}
+                  onClickCapture={locked ? (e) => { e.stopPropagation(); onViewFingering?.(line, c) } : undefined}
                   data-chord-semitone={chordSemitone(c.chord) ?? undefined}
                   style={draggingChordId === c.id ? { opacity: 0.25 } : undefined}
                   onPointerDown={(e) => handleChordPointerDown(e, c)}
                   onClick={(e) => e.stopPropagation()}
-                  onContextMenu={(e) => handleChordContextMenu(e, c)}
+                  onContextMenu={locked ? undefined : (e) => handleChordContextMenu(e, c)}
                 >
                   {c.chord}
                 </span>
@@ -774,11 +777,12 @@ export default function Line({
               <span
                 key={c.id}
                 className={'chord-chip' + (armedChordId === c.id ? ' is-armed' : '')}
+                onClickCapture={locked ? (e) => { e.stopPropagation(); onViewFingering?.(line, c) } : undefined}
                 data-chord-semitone={chordSemitone(c.chord) ?? undefined}
                 style={{ left: c.position * charWidth, opacity: draggingChordId === c.id ? 0.25 : 1 }}
                 onPointerDown={(e) => handleChordPointerDown(e, c)}
                 onClick={(e) => e.stopPropagation()}
-                onContextMenu={(e) => handleChordContextMenu(e, c)}
+                onContextMenu={locked ? undefined : (e) => handleChordContextMenu(e, c)}
               >
                 {c.chord}
               </span>

@@ -28,6 +28,7 @@ function markDismissed() {
 export default function NamePrompt() {
   const [open, setOpen] = useState(false)
   const [name, setName] = useState('')
+  const [hint, setHint] = useState(false)
 
   useEffect(() => {
     if (getDisplayName() || wasDismissed()) return
@@ -40,23 +41,49 @@ export default function NamePrompt() {
   useEffect(() => {
     if (!open) return
     function onKeyDown(e) {
-      if (e.key === 'Escape') dismiss()
+      if (e.key === 'Escape') {
+        markDismissed()
+        setOpen(false)
+        setHint(true)
+      }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [open])
+
+  // The hint is an aside, not a task — it retires on its own.
+  useEffect(() => {
+    if (!hint) return
+    const id = setTimeout(() => setHint(false), 6000)
+    return () => clearTimeout(id)
+  }, [hint])
+
+  // Shown after "Позже": the dialog never returns, so without this the way
+  // back to the field is invisible.
+  if (hint) {
+    return (
+      <div className="save-banner save-banner-remote" role="status">
+        <span>Имя можно указать в настройках</span>
+        <button type="button" onClick={() => setHint(false)}>
+          Понятно
+        </button>
+      </div>
+    )
+  }
 
   if (!open) return null
 
   function dismiss() {
     markDismissed()
     setOpen(false)
+    setHint(true)
   }
 
   function save(e) {
     e.preventDefault()
     const trimmed = name.trim()
     if (!trimmed) return dismiss()
+    setHint(false)
     setDisplayName(trimmed)
     markDismissed()
     setOpen(false)

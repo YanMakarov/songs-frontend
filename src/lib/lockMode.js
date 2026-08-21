@@ -17,18 +17,25 @@ const STORAGE_KEY = 'chords_app_locked_v1'
 let locked = read()
 const listeners = new Set()
 
+// Locked until told otherwise. Reading is what this app is for most of the
+// time — a song is opened dozens of times for every once it is edited — and
+// the cost of the wrong default is asymmetric: an unwanted lock is one hold
+// away from gone, an unwanted edit has to be noticed first.
 function read() {
   try {
-    return localStorage.getItem(STORAGE_KEY) === '1'
+    const stored = localStorage.getItem(STORAGE_KEY)
+    if (stored === null) return true
+    return stored === '1'
   } catch {
-    return false
+    return true
   }
 }
 
 function write(value) {
   try {
-    if (value) localStorage.setItem(STORAGE_KEY, '1')
-    else localStorage.removeItem(STORAGE_KEY)
+    // Written explicitly either way: absence means "never chose", which is
+    // what makes the default work.
+    localStorage.setItem(STORAGE_KEY, value ? '1' : '0')
   } catch {
     // Blocked storage only costs persistence, not the mode itself.
   }

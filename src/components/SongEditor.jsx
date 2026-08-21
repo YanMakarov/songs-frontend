@@ -17,6 +17,8 @@ import { ApiError, importPdf } from '../lib/api.js'
 import { UNDO_TIMEOUT_MS } from '../lib/undo.js'
 import UndoBanner from './UndoBanner.jsx'
 import LockButton from './LockButton.jsx'
+import LockNotice from './LockNotice.jsx'
+import { useLock } from '../lib/useLock.js'
 
 const LONG_PRESS_MS = 500
 const DBL_TAP_MS = 320
@@ -59,6 +61,7 @@ export default function SongEditor({
   const [confirmOriginalKey, setConfirmOriginalKey] = useState(false)
   const [localOverride, setLocalOverride] = useState(null)
   const [printPreview, setPrintPreview] = useState(false)
+  const locked = useLock()
   const [pendingLineDelete, setPendingLineDelete] = useState(null)
   const measureRef = useRef(null)
   const canvasRef = useRef(null)
@@ -790,6 +793,18 @@ export default function SongEditor({
     }
   }
 
+  // While locked, tapping a chord opens its fingering instead of editing it.
+  // Looking up how to play something is the main reason to have the song open
+  // at all, so the lock must not stand in front of it.
+  function handleViewFingering(line, chord) {
+    setFingeringTarget({
+      lineId: line.id,
+      chordId: chord.id,
+      chordText: chord.chord,
+      voicing: chord.voicing || null,
+    })
+  }
+
   const lineElements = effectiveSong.lines.map((line) => (
     <Line
       key={line.id}
@@ -807,6 +822,8 @@ export default function SongEditor({
       onChordMenu={handleChordMenuRequest}
       onLineDragStart={handleLineDragStart}
       draggingLineId={lineDrag?.line.id}
+      locked={locked}
+      onViewFingering={handleViewFingering}
     />
   ))
   if (addMenu) {
@@ -853,6 +870,7 @@ export default function SongEditor({
         />
         <ThemeMenu theme={theme} onChange={onThemeChange} />
       </div>
+      <LockNotice />
 
       <MetaBar
         song={effectiveSong}
@@ -861,9 +879,12 @@ export default function SongEditor({
         viewMode={viewMode}
         onViewModeChange={onViewModeChange}
         isTransposed={isTransposed}
-        onRequestOriginalKeyReset={handleRequestOriginalKeyReset}
+        // Both of these write to the server. They hang off container-level
+        // gestures (long press on the key field, double tap on the meta bar),
+        // which CSS cannot single out without also disabling what sits inside.
+        onRequestOriginalKeyReset={locked ? undefined : handleRequestOriginalKeyReset}
         onResetOriginalKey={handleResetKeyToOriginal}
-        onRequestInsertTop={readOnlyChords ? undefined : handleRequestInsertTop}
+        onRequestInsertTop={readOnlyChords || locked ? undefined : handleRequestInsertTop}
       />
 
       <span
@@ -992,6 +1013,7 @@ export default function SongEditor({
         <ChordFingeringModal
           chordText={fingeringTarget.chordText}
           selectedVoicing={fingeringTarget.voicing}
+          readOnly={locked}
           onClose={closeFingeringModal}
           onSelectVoicing={handleSelectVoicing}
           onDeselectVoicing={handleDeselectVoicing}

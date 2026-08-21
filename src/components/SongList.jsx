@@ -4,6 +4,7 @@ import ThemeMenu from './ThemeMenu.jsx'
 import Tooltip from './Tooltip.jsx'
 import ConfirmModal from './ConfirmModal.jsx'
 import LockButton from './LockButton.jsx'
+import LockNotice from './LockNotice.jsx'
 import UndoBanner from './UndoBanner.jsx'
 
 function formatMeta(song) {
@@ -287,6 +288,7 @@ export default function SongList({
         )}
         <ThemeMenu theme={theme} onChange={onThemeChange} />
       </div>
+      <LockNotice />
       {loading ? (
         <div className="screen-state">
           <div>
