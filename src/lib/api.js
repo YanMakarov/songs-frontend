@@ -28,6 +28,9 @@ export class ConflictError extends ApiError {
     this.currentRev = detail.currentRev ?? null
     this.expectedRev = detail.expectedRev ?? null
     this.updatedBy = detail.current?.updatedBy || null
+    // 'lines'   — the same lines were edited from both sides
+    // 'no_base' — the version this edit was based on has aged out of history
+    this.reason = detail.reason || 'lines'
   }
 }
 
@@ -40,7 +43,17 @@ export function etagFor(songId, rev) {
   return `W/"${songId}-${rev}"`
 }
 
-async function request(path, { method = 'GET', body, headers = {}, keepalive = false } = {}) {
+async function request(path, options) {
+  const { data } = await requestWithMeta(path, options)
+  return data
+}
+
+/**
+ * Like `request`, but also returns the response headers the API uses to
+ * report what it did with a write — whether it merged, and which fields it
+ * took away from someone else.
+ */
+async function requestWithMeta(path, { method = 'GET', body, headers = {}, keepalive = false } = {}) {
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData
   const mergedHeaders = {
     Accept: 'application/json',
@@ -70,10 +83,15 @@ async function request(path, { method = 'GET', body, headers = {}, keepalive = f
   }
 
   if (response.status === 204) {
-    return null
+    return { data: null, merged: false, overwritten: [] }
   }
 
-  return response.json()
+  const overwritten = response.headers.get('X-Overwritten-Fields')
+  return {
+    data: await response.json(),
+    merged: response.headers.get('X-Merged') === 'true',
+    overwritten: overwritten ? overwritten.split(',').filter(Boolean) : [],
+  }
 }
 
 function toSummary(song) {
@@ -117,14 +135,20 @@ export async function getSong(songId) {
  */
 export async function updateSong(songId, patch, { rev, keepalive } = {}) {
   if (!patch || typeof patch !== 'object') {
-    return getSong(songId)
+    return { data: await getSong(songId), merged: false, overwritten: [] }
   }
-  return request(`${SONGS_ENDPOINT}/${songId}`, {
+  return requestWithMeta(`${SONGS_ENDPOINT}/${songId}`, {
     method: 'PATCH',
     body: patch,
     headers: rev == null ? {} : { 'If-Match': etagFor(songId, rev) },
     keepalive,
   })
+}
+
+/** Edit history of a song — who changed it and when. */
+export async function listRevisions(songId) {
+  const data = await request(`${SONGS_ENDPOINT}/${songId}/revisions`)
+  return Array.isArray(data) ? data : []
 }
 
 /** Soft delete. Returns the deleted song, which is what `restoreSong` undoes. */

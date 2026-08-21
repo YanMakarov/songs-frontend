@@ -36,7 +36,7 @@ export function attachWriteQueue(queryClient) {
   if (attached) return () => {}
   attached = true
 
-  const unsubscribeSaved = subscribeSaved((songId, updated) => {
+  const unsubscribeSaved = subscribeSaved((songId, updated, meta) => {
     if (!updated) return
     queryClient.setQueryData(queryKeys.song(songId), (prev) =>
       // Metadata from the server, lines from local state: the user may have
@@ -49,6 +49,12 @@ export function attachWriteQueue(queryClient) {
       const without = (prev || []).filter((s) => s.id !== summary.id)
       return sortSongs([...without, summary])
     })
+    // The server folded someone else's edit into this write. The body on
+    // screen is now ahead of what the user typed, so pull the merged version
+    // in rather than leaving the local copy to drift.
+    if (meta?.merged) {
+      queryClient.invalidateQueries({ queryKey: queryKeys.song(songId) })
+    }
   })
 
   const unsubscribeConflict = subscribeConflict((songId, error) => {

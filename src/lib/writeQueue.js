@@ -111,7 +111,10 @@ async function send(songId, { keepalive = false } = {}) {
   notifyStatus(songId)
 
   try {
-    const updated = await updateSong(songId, patch, { rev: entry.rev ?? undefined, keepalive })
+    const { data: updated, merged, overwritten } = await updateSong(songId, patch, {
+      rev: entry.rev ?? undefined,
+      keepalive,
+    })
     const current = entries.get(songId)
     if (!current) return
     current.sending = false
@@ -119,7 +122,10 @@ async function send(songId, { keepalive = false } = {}) {
     current.error = null
     // Edits made while the request was in flight rebase onto what came back.
     current.rev = updated?.rev ?? null
-    emit(savedListeners, songId, updated)
+    // `merged` means the server combined this write with someone else's
+    // without needing to ask — worth telling the user quietly, since their
+    // song just changed in ways they did not type.
+    emit(savedListeners, songId, updated, { merged, overwritten })
     if (Object.keys(current.patch).length > 0) {
       current.timer = setTimeout(() => {
         current.timer = 0
@@ -210,7 +216,11 @@ export function subscribeStatus(fn) {
   return () => statusListeners.delete(fn)
 }
 
-/** Fired with the server's response after every successful write. */
+/**
+ * Fired with the server's response after every successful write. The third
+ * argument reports whether the write was merged with someone else's and which
+ * metadata fields it overwrote.
+ */
 export function subscribeSaved(fn) {
   savedListeners.add(fn)
   return () => savedListeners.delete(fn)

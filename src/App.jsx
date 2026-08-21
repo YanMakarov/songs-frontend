@@ -7,9 +7,11 @@ import ChordLibraryPage from './components/ChordLibraryPage.jsx'
 import { loadTheme, saveTheme, loadViewMode, saveViewMode, loadTextScale, saveTextScale, loadColorScheme, saveColorScheme } from './lib/storage.js'
 import { applyTheme } from './lib/theme.js'
 import AppSettingsModal from './components/AppSettingsModal.jsx'
+import ConflictModal from './components/ConflictModal.jsx'
 import { UNDO_TIMEOUT_MS } from './lib/undo.js'
 import { discard, flush, getStatus, hasPending, retry, subscribeConflict, subscribeStatus } from './lib/writeQueue.js'
 import { patchSong } from './lib/cacheBridge.js'
+import { queryKeys } from './lib/queryKeys.js'
 import { useSetlistQuery, useSongQuery, useSongsQuery } from './lib/queries.js'
 import { clearRemoteChange, useSetlistSync } from './lib/sync.js'
 import { useRemoteChanges } from './lib/useRemoteChanges.js'
@@ -291,7 +293,11 @@ function SongEditorRoute({
     })
     const unsubscribeConflict = subscribeConflict((id, err) => {
       if (id !== songId) return
-      setConflict(err)
+      // Snapshot the local version here and never read it from the cache
+      // again. Background sync keeps running during the dialog, and once the
+      // queue dropped this edit there is nothing stopping a refetch from
+      // replacing the very version the user is being asked to choose.
+      setConflict({ error: err, mine: songRef.current })
     })
     setSaveError(getStatus(songId).error)
     setConflict(null)
@@ -346,12 +352,29 @@ function SongEditorRoute({
   )
 
   // Taking the server's version: drop what could not be sent, then reload.
-  const handleResolveConflict = useCallback(() => {
+  const handleTakeTheirs = useCallback(() => {
     discard(songId)
     setConflict(null)
     clearRemoteChange(queryClient, songId)
-    refetch()
-  }, [songId, refetch, queryClient])
+    if (conflict?.error?.current) {
+      queryClient.setQueryData(queryKeys.song(songId), conflict.error.current)
+    } else {
+      refetch()
+    }
+  }, [songId, refetch, queryClient, conflict])
+
+  // Keeping the local version: rebase onto the server's current rev so the
+  // resend is an ordinary write rather than another merge attempt — which
+  // would conflict again on exactly the same lines.
+  const handleKeepMine = useCallback(() => {
+    const mine = conflict?.mine
+    if (!mine) return
+    discard(songId)
+    setConflict(null)
+    clearRemoteChange(queryClient, songId)
+    queryClient.setQueryData(queryKeys.song(songId), { ...mine, rev: conflict.error.currentRev })
+    patchSong(queryClient, songId, { lines: mine.lines })
+  }, [songId, queryClient, conflict])
 
   // With a warm cache there is nothing to wait for — this only shows on a
   // first-ever visit to a song.
@@ -402,17 +425,22 @@ function SongEditorRoute({
         onOpenSettings={onOpenSettings}
         onOpenLibrary={(chord) => navigate(`/chords-library${chord ? `?chord=${encodeURIComponent(chord)}` : ''}`)}
       />
-      {conflict && (
+      {/* An overlap the server could not resolve: ask, showing both versions.
+          A base too old to merge against has nothing to compare, so that case
+          stays a plain banner. */}
+      {conflict && conflict.error.reason === 'lines' && conflict.error.current && (
+        <ConflictModal
+          mine={conflict.mine}
+          theirs={conflict.error.current}
+          onKeepMine={handleKeepMine}
+          onTakeTheirs={handleTakeTheirs}
+          onClose={handleTakeTheirs}
+        />
+      )}
+      {conflict && conflict.error.reason !== 'lines' && (
         <div className="save-banner save-banner-conflict" role="alert">
-          {/* Neutral phrasing on purpose: a display name says nothing reliable
-              about how to address its owner, and guessing the verb ending from
-              the last letter gets it wrong for half the names it meets. */}
-          <span>
-            {conflict.updatedBy
-              ? `Песню изменили — ${conflict.updatedBy}`
-              : 'Песню изменили в другом окне'}
-          </span>
-          <button type="button" onClick={handleResolveConflict}>
+          <span>{conflict.error.message}</span>
+          <button type="button" onClick={handleTakeTheirs}>
             Обновить
           </button>
         </div>
