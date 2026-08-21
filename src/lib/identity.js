@@ -1,10 +1,14 @@
 // Who is making a change.
 //
-// Not authentication: there is no sign-in yet, and both values below are
-// client-supplied, so the server treats them as attribution for the interface
-// and nothing more. They exist so a conflict banner can say "Песню изменил
-// Вася" instead of "кто-то". When real accounts arrive, the server starts
-// reading the session instead and this module goes away.
+// The server now takes the author from the session, so nothing here decides
+// anything: the headers below are attribution of last resort, used only by a
+// backend running with `SONGS_API_AUTH_MODE=disabled` — local development.
+//
+// What still matters in production is `getAttribution`. The change feed
+// identifies each edit by display name, and this tab has to recognise its own
+// edits coming back so it does not announce them as somebody else's. That
+// name must therefore be the account's, which is why the auth layer pushes it
+// here on sign-in.
 
 const CLIENT_ID_KEY = 'chords_app_client_id_v1'
 const DISPLAY_NAME_KEY = 'chords_app_display_name_v1'
@@ -36,6 +40,16 @@ export function getClientId() {
   return cachedId
 }
 
+// The signed-in account's display name — the one the server records. Held
+// in a module variable rather than localStorage because it belongs to the
+// session, not to the browser: it must disappear when the session does.
+let sessionName = ''
+
+/** Told by the auth layer whenever the signed-in user changes. */
+export function setSessionDisplayName(name) {
+  sessionName = (name || '').trim()
+}
+
 export function getDisplayName() {
   try {
     return (localStorage.getItem(DISPLAY_NAME_KEY) || '').trim()
@@ -62,6 +76,10 @@ export function setDisplayName(name) {
  * announce them as somebody else's.
  */
 export function getAttribution() {
+  // Session first: this is what the server actually writes to `updatedBy`.
+  // The locally chosen name is only reached when there is no session, which
+  // in production means there is nothing to attribute anyway.
+  if (sessionName) return sessionName.slice(0, 60)
   const name = getDisplayName()
   if (name) return name.slice(0, 60)
   return `anon-${getClientId().slice(0, 8)}`

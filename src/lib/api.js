@@ -35,6 +35,48 @@ export class ConflictError extends ApiError {
 }
 
 /**
+ * The session either ran out or was never there.
+ *
+ * `reason` separates the two, and the difference decides what the app does:
+ * 'expired' means we were signed in and the cached songs are still ours to
+ * show, while 'anonymous' means there is nothing to keep. Never thrown for a
+ * network failure — see `isOffline` — because "no signal" must not look like
+ * "signed out".
+ */
+export class AuthError extends ApiError {
+  constructor(payload) {
+    const detail = payload?.detail || {}
+    super(detail.message || 'Требуется вход', 401, payload)
+    this.reason = detail.reason === 'expired' ? 'expired' : 'anonymous'
+  }
+}
+
+/**
+ * The request never reached the server.
+ *
+ * `fetch` rejects rather than resolving, so this is the one failure with no
+ * status at all — and the one the offline-first parts of the app must treat
+ * as "ask again later" instead of an error.
+ */
+export class OfflineError extends ApiError {
+  constructor(cause) {
+    super('Нет связи с сервером', 0, null)
+    this.cause = cause
+  }
+}
+
+export function isOffline(error) {
+  return error instanceof OfflineError
+}
+
+/** Called with the `AuthError` whenever a request comes back unauthenticated. */
+let onUnauthorized = null
+
+export function setUnauthorizedHandler(handler) {
+  onUnauthorized = handler
+}
+
+/**
  * Entity tag for a song version. Built locally rather than read from the
  * response header: `rev` is already in the body, and this keeps writes working
  * even where CORS hides the `ETag` header.
@@ -61,12 +103,23 @@ async function requestWithMeta(path, { method = 'GET', body, headers = {}, keepa
     ...identityHeaders(),
     ...headers,
   }
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    method,
-    headers: mergedHeaders,
-    body: isFormData ? body : body ? JSON.stringify(body) : undefined,
-    keepalive: keepalive || undefined,
-  })
+  let response
+  try {
+    response = await fetch(`${API_BASE_URL}${path}`, {
+      method,
+      headers: mergedHeaders,
+      body: isFormData ? body : body ? JSON.stringify(body) : undefined,
+      keepalive: keepalive || undefined,
+      // The session cookie is HttpOnly and lives on the API host, so it only
+      // travels if the request asks for it. Without this every call is
+      // anonymous and the whole app answers 401.
+      credentials: 'include',
+    })
+  } catch (err) {
+    // DNS failure, dropped connection, aeroplane mode. Distinct from any HTTP
+    // status: the caller can retry this one, and the write queue does.
+    throw new OfflineError(err)
+  }
 
   if (!response.ok) {
     let payload = null
@@ -77,6 +130,14 @@ async function requestWithMeta(path, { method = 'GET', body, headers = {}, keepa
     }
     if (response.status === 412) {
       throw new ConflictError(payload)
+    }
+    if (response.status === 401) {
+      const error = new AuthError(payload)
+      // One place decides what an expired session means — see lib/auth.jsx.
+      // Doing it here rather than at every call site is what keeps the
+      // handling from drifting apart between screens.
+      if (onUnauthorized) onUnauthorized(error)
+      throw error
     }
     const detail = payload?.detail || response.statusText || 'Request failed'
     throw new ApiError(typeof detail === 'string' ? detail : 'Request failed', response.status, payload)
@@ -205,6 +266,30 @@ export async function importPdf(file) {
   const formData = new FormData()
   formData.append('file', file)
   return request(`/pdf/import`, { method: 'POST', body: formData })
+}
+
+/**
+ * Sign in. The session arrives as a `Set-Cookie` the page never sees; the
+ * body is only there so the UI can greet the user by name.
+ */
+export async function login(username, password) {
+  return request('/auth/login', { method: 'POST', body: { username, password } })
+}
+
+export async function logout() {
+  return request('/auth/logout', { method: 'POST' })
+}
+
+/**
+ * Who the server thinks we are.
+ *
+ * Answers 200 with `authenticated: false` rather than 401 when nobody is
+ * signed in, so a cold start can tell "not signed in" from "the server is
+ * unreachable" — which `OfflineError` covers — without treating either as a
+ * failure.
+ */
+export async function fetchAuthState() {
+  return request('/auth/me')
 }
 
 export { toSummary }

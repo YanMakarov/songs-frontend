@@ -15,7 +15,7 @@
 //
 // Phase 2 replaces this module with TanStack Query mutations.
 
-import { ConflictError, updateSong } from './api.js'
+import { AuthError, ConflictError, updateSong } from './api.js'
 
 const DEBOUNCE_MS = 400
 const FIRST_RETRY_MS = 1000
@@ -143,6 +143,18 @@ async function send(songId, { keepalive = false } = {}) {
     // Put the unsent fields back underneath anything typed since.
     current.patch = { ...patch, ...current.patch }
 
+    if (err instanceof AuthError) {
+      // The edit is not lost and not wrong — it just has nobody to attribute
+      // it to yet. Hold it without a retry timer: backing off against a
+      // session that will not come back on its own only burns battery. The
+      // auth layer calls `flushAll` once the user signs in again.
+      current.attempt = 0
+      current.error = 'Нужно войти заново — правки сохранены'
+      clearTimer(current)
+      notifyStatus(songId)
+      return
+    }
+
     if (err instanceof ConflictError) {
       // Someone else got there first. Retrying would either fail forever or,
       // without a precondition, silently overwrite their work — so stop and
@@ -208,6 +220,24 @@ export function discard(songId) {
   clearTimer(entry)
   entries.delete(songId)
   notifyStatus(songId)
+}
+
+/**
+ * Drop every song's pending edits. For signing out, and for signing in as
+ * somebody else.
+ *
+ * The queue is module state, so it outlives the React tree that a sign-out
+ * unmounts. Left alone, edits typed by the previous account would be sent
+ * under the next one's session and recorded as theirs.
+ */
+export function discardAll() {
+  const ids = [...entries.keys()]
+  for (const id of ids) {
+    const entry = entries.get(id)
+    if (entry) clearTimer(entry)
+    entries.delete(id)
+    notifyStatus(id)
+  }
 }
 
 /** @param {(songId: string, status: {pending: boolean, sending: boolean, error: string|null}) => void} fn */

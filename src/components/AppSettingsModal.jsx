@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import { IconClose } from './Icons.jsx'
+import InstallSection from './InstallSection.jsx'
 import { getDisplayName, setDisplayName } from '../lib/storage.js'
+import { useAuth } from '../lib/auth.jsx'
 
 const DEFAULT_MIN = 0.85
 const DEFAULT_MAX = 1.4
@@ -23,6 +25,7 @@ export default function AppSettingsModal({
   const applied = Number.isFinite(textScale) ? textScale : 1
   const percent = Math.round(applied * 100)
   const [name, setName] = useState(getDisplayName)
+  const { user, signOut } = useAuth()
 
   // Re-read on open: another tab may have changed it.
   useEffect(() => {
@@ -56,6 +59,14 @@ export default function AppSettingsModal({
 
   function handleToggleColorScheme(e) {
     onColorSchemeChange?.(e.target.checked)
+  }
+
+  async function handleSignOut() {
+    // Wording matters: the cache really is emptied, and on a phone that means
+    // re-downloading the setlist over whatever connection is available.
+    if (!window.confirm('Выйти? Песни, сохранённые на этом устройстве, будут удалены.')) return
+    onClose?.()
+    await signOut()
   }
 
   function handleNameChange(e) {
@@ -105,22 +116,44 @@ export default function AppSettingsModal({
             </div>
           </div>
 
-          <div className="settings-field">
-            <label htmlFor="app-settings-display-name">Ваше имя в группе</label>
-            <input
-              id="app-settings-display-name"
-              type="text"
-              className="settings-text-input"
-              value={name}
-              onChange={handleNameChange}
-              placeholder="Например, Иннокентий"
-              maxLength={60}
-              autoComplete="off"
-            />
-            <div className="settings-hint">
-              Подписывает ваши правки, чтобы остальные видели, кто что менял.
+          {/* Signed in, the name is the account's and not the browser's —
+              editing it here would change nothing the server records. The
+              free-text field survives only for a backend running with auth
+              disabled, where there is no account to take it from. */}
+          {user ? (
+            <div className="settings-field">
+              <label>Вы вошли как</label>
+              <div className="settings-account">
+                <div className="settings-account-name">{user.displayName}</div>
+                <div className="settings-account-login">{user.username}</div>
+              </div>
+              <button type="button" className="settings-signout-btn" onClick={handleSignOut}>
+                Выйти
+              </button>
+              <div className="settings-hint">
+                Выход очистит песни, сохранённые на этом устройстве.
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="settings-field">
+              <label htmlFor="app-settings-display-name">Ваше имя в группе</label>
+              <input
+                id="app-settings-display-name"
+                type="text"
+                className="settings-text-input"
+                value={name}
+                onChange={handleNameChange}
+                placeholder="Например, Иннокентий"
+                maxLength={60}
+                autoComplete="off"
+              />
+              <div className="settings-hint">
+                Подписывает ваши правки, чтобы остальные видели, кто что менял.
+              </div>
+            </div>
+          )}
+
+          <InstallSection />
 
           <div className="settings-field">
             <label htmlFor="app-settings-color-scheme">Цветовая схема аккордов</label>

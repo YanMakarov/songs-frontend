@@ -36,9 +36,10 @@ export const queryClient = new QueryClient({
       refetchOnReconnect: true,
       retry: (failureCount, error) => {
         // A missing or conflicting resource will not become available by
-        // asking again.
+        // asking again, and neither will an unauthenticated one — retrying a
+        // 401 only delays the login screen by three backoffs.
         const status = error?.status
-        if (status === 404 || status === 412) return false
+        if (status === 401 || status === 404 || status === 412) return false
         return failureCount < 3
       },
       retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 30000),

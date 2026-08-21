@@ -9,6 +9,7 @@ import { applyTheme } from './lib/theme.js'
 import AppSettingsModal from './components/AppSettingsModal.jsx'
 import ConflictModal from './components/ConflictModal.jsx'
 import NamePrompt from './components/NamePrompt.jsx'
+import { useAuth } from './lib/auth.jsx'
 import { UNDO_TIMEOUT_MS } from './lib/undo.js'
 import { discard, flush, getStatus, hasPending, retry, subscribeConflict, subscribeStatus } from './lib/writeQueue.js'
 import { patchSong } from './lib/cacheBridge.js'
@@ -28,6 +29,8 @@ export default function App() {
   // Keeps this tab in step with the rest of the group. One cheap GET on focus
   // and on a timer while visible; nothing at all while hidden.
   useSetlistSync()
+
+  const { user } = useAuth()
 
   const { data: songs = [], isPending: songsPending, error: songsError, refetch: refetchSongs } = useSongsQuery()
   const remoteChanges = useRemoteChanges()
@@ -180,7 +183,9 @@ export default function App() {
       <Route path="/chords-library" element={<ChordLibraryRoute />} />
       <Route path="*" element={<Navigate to="/songs" replace />} />
       </Routes>
-      <NamePrompt />
+      {/* Only without an account: the display name comes from the session
+          now, so asking for one would collect something nothing reads. */}
+      {user ? null : <NamePrompt />}
       <AppSettingsModal
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}

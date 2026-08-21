@@ -19,6 +19,12 @@
 }
 
 [data-theme='light'] {
+  /* Tells the browser which way to paint everything it draws itself: the
+     `<select>` popup, autofill, spin buttons, the caret, scrollbars. Without
+     it the UA assumes light regardless of the tokens below, so in dark theme
+     an unstyled control comes out white — the tokens only cover what this
+     file paints. */
+  color-scheme: light;
   --bg: #F2F2F7;
   --surface: #FFFFFF;
   --surface-2: #F7F7FA;
@@ -50,6 +56,7 @@
 }
 
 [data-theme='dark'] {
+  color-scheme: dark;
   --bg: #000000;
   --surface: #1C1C1E;
   --surface-2: #2C2C2E;
@@ -744,6 +751,13 @@ button { cursor: pointer; }
   padding: 6px 4px;
 }
 .pwa-banner button:active { transform: scale(0.95); }
+
+/* Install button inside the settings sheet: full width, and without the
+   floating shadow the standalone action buttons carry. */
+.install-btn {
+  align-self: stretch;
+  box-shadow: none;
+}
 
 /* Meta bar (song header) --------------------------------------------------*/
 .meta-bar {
@@ -2539,4 +2553,165 @@ button { cursor: pointer; }
 }
 .shape-editor-modal {
   width: min(560px, calc(100vw - 40px));
+}
+
+/* Sign-in ---------------------------------------------------------------- */
+/* Self-contained: this screen renders before the app does, and before any
+   cached data exists, so it must not depend on styles that live inside the
+   editor or the settings modal. `.accent-btn` has no base rule in this file —
+   every other use of it is scoped to a container — hence the full button
+   styling here rather than a one-line override. */
+
+.login-page {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 360px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 28px 24px;
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-card);
+}
+
+.login-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 650;
+  letter-spacing: -0.4px;
+  color: var(--text);
+}
+
+.login-subtitle {
+  margin: -8px 0 4px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* 16px keeps iOS Safari from zooming the viewport when the field takes focus,
+   which on a phone leaves the page scrolled sideways after signing in. */
+.login-field .settings-text-input {
+  font-size: 16px;
+}
+
+.login-error {
+  margin: 0;
+  font-size: 13px;
+  color: var(--danger);
+}
+
+.login-submit {
+  margin-top: 4px;
+  padding: 12px 16px;
+  border: none;
+  border-radius: var(--radius-m);
+  background: var(--accent);
+  color: #fff;
+  font-family: var(--font-ui);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s ease, transform 0.1s ease;
+}
+
+.login-submit:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.login-submit:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.login-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  text-align: center;
+}
+
+/* Shown while the app runs on a session nobody could confirm — an offline
+   cold start. Deliberately a quiet strip, not a modal: everything still
+   works, and there is nothing for the user to do about it. */
+.auth-offline-note {
+  position: fixed;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  z-index: 40;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-card);
+  font-size: 12px;
+  color: var(--text-secondary);
+  pointer-events: none;
+}
+
+.login-splash {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  color: var(--text-tertiary);
+  font-size: 14px;
+}
+
+.settings-account {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: var(--radius-m);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.settings-account-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.settings-account-login {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.settings-signout-btn {
+  margin-top: 8px;
+  align-self: flex-start;
+  padding: 8px 14px;
+  border-radius: var(--radius-m);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--danger);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.settings-signout-btn:active {
+  background: var(--surface-pressed);
 }
