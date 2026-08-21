@@ -1,5 +1,6 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { IconClose } from './Icons.jsx'
+import { getDisplayName, setDisplayName } from '../lib/storage.js'
 
 const DEFAULT_MIN = 0.85
 const DEFAULT_MAX = 1.4
@@ -21,6 +22,12 @@ export default function AppSettingsModal({
   const sliderStep = Number.isFinite(step) ? step : DEFAULT_STEP
   const applied = Number.isFinite(textScale) ? textScale : 1
   const percent = Math.round(applied * 100)
+  const [name, setName] = useState(getDisplayName)
+
+  // Re-read on open: another tab may have changed it.
+  useEffect(() => {
+    if (open) setName(getDisplayName())
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -49,6 +56,12 @@ export default function AppSettingsModal({
 
   function handleToggleColorScheme(e) {
     onColorSchemeChange?.(e.target.checked)
+  }
+
+  function handleNameChange(e) {
+    const next = e.target.value
+    setName(next)
+    setDisplayName(next)
   }
 
   return (
@@ -89,6 +102,23 @@ export default function AppSettingsModal({
                 aria-valuenow={applied}
               />
               <span className="text-scale-value">{percent}%</span>
+            </div>
+          </div>
+
+          <div className="settings-field">
+            <label htmlFor="app-settings-display-name">Ваше имя в группе</label>
+            <input
+              id="app-settings-display-name"
+              type="text"
+              className="settings-text-input"
+              value={name}
+              onChange={handleNameChange}
+              placeholder="Например, Ян"
+              maxLength={60}
+              autoComplete="off"
+            />
+            <div className="settings-hint">
+              Подписывает ваши правки, чтобы остальные видели, кто что менял.
             </div>
           </div>
 

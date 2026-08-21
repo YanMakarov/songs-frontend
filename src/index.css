@@ -399,6 +399,13 @@ button { cursor: pointer; }
 }
 .save-banner button:active { transform: scale(0.95); }
 
+/* Someone else's edit landed first — not an error on our side, so it reads as
+   information rather than failure. */
+.save-banner-conflict {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
 .undo-banner {
   position: fixed;
   bottom: 24px;
@@ -1318,6 +1325,26 @@ button { cursor: pointer; }
   flex-direction: column;
   gap: 8px;
 }
+.settings-text-input {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 15px;
+}
+.settings-text-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -1px;
+}
+
+.settings-hint {
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
 .settings-field label {
   font-size: 13px;
   font-weight: 700;

@@ -1,5 +1,9 @@
 // LocalStorage persistence for theme and view-mode, plus reusable helpers.
 
+// Re-exported so settings UI has one place to import preferences from; the
+// values themselves belong to the identity module, which the API layer uses.
+export { getDisplayName, setDisplayName } from './identity.js'
+
 const THEME_KEY = 'chords_app_theme_v1'
 const VIEW_MODE_KEY = 'chords_app_view_mode_v1'
 const TEXT_SCALE_KEY = 'chords_app_text_scale_v1'

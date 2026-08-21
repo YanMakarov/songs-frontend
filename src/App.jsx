@@ -8,6 +8,16 @@ import { applyTheme } from './lib/theme.js'
 import AppSettingsModal from './components/AppSettingsModal.jsx'
 import { UNDO_TIMEOUT_MS } from './lib/undo.js'
 import {
+  discard,
+  enqueue,
+  flush,
+  getStatus,
+  retry,
+  subscribeConflict,
+  subscribeSaved,
+  subscribeStatus,
+} from './lib/writeQueue.js'
+import {
   ApiError,
   createSong as apiCreateSong,
   deleteSong as apiDeleteSong,
@@ -17,7 +27,6 @@ import {
   reorderSongs as apiReorderSongs,
   toSummary as apiToSummary,
   updateSetlist as apiUpdateSetlist,
-  updateSong as apiUpdateSong,
 } from './lib/api.js'
 
 export default function App() {
@@ -321,102 +330,73 @@ function SongEditorRoute({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [saveError, setSaveError] = useState(null)
-  const pendingPatchRef = useRef(null)
-  const pendingSongIdRef = useRef(null)
-  const saveTimerRef = useRef(null)
-  const mountedRef = useRef(true)
+  const [conflict, setConflict] = useState(null)
   const songRef = useRef(null)
-
-  useEffect(() => {
-    return () => {
-      mountedRef.current = false
-    }
-  }, [])
 
   useEffect(() => {
     songRef.current = song
   }, [song])
 
-  const flushPendingPatch = useCallback(async () => {
-    if (saveTimerRef.current) {
-      clearTimeout(saveTimerRef.current)
-      saveTimerRef.current = null
-    }
-    const payload = pendingPatchRef.current
-    const targetSongId = pendingSongIdRef.current
-    if (!payload || !targetSongId) {
-      return
-    }
-    pendingPatchRef.current = null
-    pendingSongIdRef.current = null
-    const shouldUpdateUi = mountedRef.current && targetSongId === songId
-    if (shouldUpdateUi) {
-      setSaveError(null)
-    }
-    try {
-      const updated = await apiUpdateSong(targetSongId, payload)
+  // The queue lives at module scope and keeps retrying on its own, so these
+  // subscriptions are only about reflecting its state — unmounting the editor
+  // no longer abandons an unsent edit.
+  useEffect(() => {
+    const unsubscribeStatus = subscribeStatus((id, status) => {
+      if (id !== songId) return
+      setSaveError(status.error)
+    })
+    const unsubscribeSaved = subscribeSaved((id, updated) => {
       onSongMetadataChange?.(updated)
-      if (shouldUpdateUi) {
-        setSong((prev) => (prev ? mergeSongState(prev, stripLines(updated)) : prev))
-      }
-    } catch (err) {
-      console.error(err)
-      pendingPatchRef.current = mergePatch(payload, pendingPatchRef.current)
-      pendingSongIdRef.current = targetSongId
-      if (shouldUpdateUi) {
-        setSaveError('Не удалось сохранить изменения')
-        saveTimerRef.current = window.setTimeout(() => {
-          saveTimerRef.current = null
-          flushPendingPatch()
-        }, 1500)
-      }
+      if (id !== songId) return
+      // Take the server's version forward; keep the local lines, which may
+      // already be ahead of what this response acknowledges.
+      setSong((prev) => (prev ? mergeSongState(prev, stripLines(updated)) : prev))
+    })
+    const unsubscribeConflict = subscribeConflict((id, err) => {
+      if (id !== songId) return
+      setConflict(err)
+    })
+    setSaveError(getStatus(songId).error)
+    return () => {
+      unsubscribeStatus()
+      unsubscribeSaved()
+      unsubscribeConflict()
     }
   }, [songId, onSongMetadataChange])
 
-  useEffect(() => {
-    let ignore = false
-    async function loadSong() {
+  const loadSong = useCallback(
+    async ({ signal } = {}) => {
       setLoading(true)
       setError(null)
-      await flushPendingPatch()
-      pendingPatchRef.current = null
-      pendingSongIdRef.current = null
+      // Land any edit still queued for this song first, or the GET below could
+      // return a version that predates it.
+      await flush(songId)
       try {
         const data = await apiGetSong(songId)
-        if (ignore) return
+        if (signal?.aborted) return
         setSong(data)
         songRef.current = data
+        setConflict(null)
         onSongMetadataChange?.(data)
       } catch (err) {
-        if (ignore) return
+        if (signal?.aborted) return
         if (err instanceof ApiError && err.status === 404) {
           navigate('/songs', { replace: true })
           return
         }
         setError(err instanceof Error ? err.message : 'Не удалось загрузить песню')
       } finally {
-        if (!ignore) {
-          setLoading(false)
-        }
+        if (!signal?.aborted) setLoading(false)
       }
-    }
-    loadSong()
-    return () => {
-      ignore = true
-    }
-  }, [songId, flushPendingPatch, navigate, onSongMetadataChange])
+    },
+    [songId, navigate, onSongMetadataChange],
+  )
 
   useEffect(() => {
-    return () => {
-      if (saveTimerRef.current) {
-        clearTimeout(saveTimerRef.current)
-        saveTimerRef.current = null
-      }
-      if (pendingPatchRef.current) {
-        void flushPendingPatch()
-      }
-    }
-  }, [flushPendingPatch])
+    const controller = new AbortController()
+    loadSong({ signal: controller.signal })
+    return () => controller.abort()
+  }, [loadSong])
 
   const handleSongPatch = useCallback(
     (patch) => {
@@ -436,18 +416,17 @@ function SongEditorRoute({
       const applied = { ...patchToApply, updatedAt: timestamp }
       setSong((prev) => mergeSongState(prev, applied))
       songRef.current = mergeSongState(songRef.current, applied)
-      pendingPatchRef.current = mergePatch(pendingPatchRef.current, patchToApply)
-      pendingSongIdRef.current = songRef.current?.id || songId
-      setSaveError(null)
-      if (!saveTimerRef.current) {
-        saveTimerRef.current = window.setTimeout(() => {
-          saveTimerRef.current = null
-          flushPendingPatch()
-        }, 400)
-      }
+      enqueue(songRef.current?.id || songId, patchToApply, currentSong.rev)
     },
-    [flushPendingPatch, songId],
+    [songId],
   )
+
+  // Taking the server's version: drop what could not be sent, then reload.
+  const handleResolveConflict = useCallback(() => {
+    discard(songId)
+    setConflict(null)
+    loadSong()
+  }, [songId, loadSong])
 
   if (loading) {
     return (
@@ -496,10 +475,25 @@ function SongEditorRoute({
         onOpenSettings={onOpenSettings}
         onOpenLibrary={(chord) => navigate(`/chords-library${chord ? `?chord=${encodeURIComponent(chord)}` : ''}`)}
       />
-      {saveError && (
+      {conflict && (
+        <div className="save-banner save-banner-conflict" role="alert">
+          {/* Neutral phrasing on purpose: a display name says nothing reliable
+              about how to address its owner, and guessing the verb ending from
+              the last letter gets it wrong for half the names it meets. */}
+          <span>
+            {conflict.updatedBy
+              ? `Песню изменили — ${conflict.updatedBy}`
+              : 'Песню изменили в другом окне'}
+          </span>
+          <button type="button" onClick={handleResolveConflict}>
+            Обновить
+          </button>
+        </div>
+      )}
+      {saveError && !conflict && (
         <div className="save-banner" role="status">
           <span>{saveError}</span>
-          <button type="button" onClick={() => flushPendingPatch()}>
+          <button type="button" onClick={() => retry(songId)}>
             Повторить
           </button>
         </div>
@@ -565,20 +559,6 @@ function mergeSongState(song, patch) {
   const next = { ...song, ...patch }
   if (!Object.prototype.hasOwnProperty.call(patch, 'lines')) {
     next.lines = song.lines
-  }
-  return next
-}
-
-function mergePatch(existing, patch) {
-  if (!patch) {
-    return existing ? { ...existing } : null
-  }
-  if (!existing) {
-    return { ...patch }
-  }
-  const next = { ...existing, ...patch }
-  if (!Object.prototype.hasOwnProperty.call(patch, 'lines')) {
-    next.lines = existing.lines
   }
   return next
 }
