@@ -701,6 +701,50 @@ button { cursor: pointer; }
 }
 .undo-banner button:active { transform: scale(0.95); }
 
+/* Service worker banner ---------------------------------------------------*/
+/* Same toast as the undo banner, one step higher so a pending undo stays
+   readable, and clear of the home indicator on a phone. */
+.pwa-banner {
+  position: fixed;
+  bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-card);
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 70;
+  max-width: min(420px, calc(100vw - 32px));
+}
+.pwa-banner-text {
+  font-size: 14px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pwa-banner button {
+  border: none;
+  border-radius: var(--radius-s);
+  padding: 6px 12px;
+  font-weight: 600;
+  font-size: 14px;
+  background: var(--accent);
+  color: #fff;
+  white-space: nowrap;
+}
+.pwa-banner button.pwa-banner-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  font-weight: 500;
+  padding: 6px 4px;
+}
+.pwa-banner button:active { transform: scale(0.95); }
+
 /* Meta bar (song header) --------------------------------------------------*/
 .meta-bar {
   padding: 14px 16px 10px;

@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client'
 import App from './App.jsx'
+import PwaUpdateBanner from './components/PwaUpdateBanner.jsx'
 import { persistOptions, queryClient } from './lib/queryClient.js'
 import { attachWriteQueue } from './lib/cacheBridge.js'
 import './index.css'
@@ -17,6 +18,9 @@ ReactDOM.createRoot(document.getElementById('root')).render(
       <BrowserRouter>
         <App />
       </BrowserRouter>
+      {/* Outside the router: the update prompt is about the shell itself, so
+          it must show on every route, including the ones that fail to render. */}
+      <PwaUpdateBanner />
     </PersistQueryClientProvider>
   </React.StrictMode>,
 )

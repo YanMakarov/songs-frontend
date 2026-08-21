@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Chords">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0A84FF"/>
+      <stop offset="1" stop-color="#5E5CE6"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#g)"/>
+  <g stroke="#fff" stroke-linecap="round">
+    <path d="M13 21h38" stroke-width="4"/>
+    <g stroke-width="2" opacity="0.62">
+      <path d="M14 22v28M23 22v28M32 22v28M41 22v28M50 22v28"/>
+    </g>
+    <g stroke-width="2" opacity="0.42">
+      <path d="M13 29h38M13 36h38M13 43h38M13 50h38"/>
+    </g>
+  </g>
+  <g fill="#fff">
+    <circle cx="23" cy="25.5" r="3.4"/>
+    <circle cx="32" cy="25.5" r="3.4"/>
+    <circle cx="41" cy="25.5" r="3.4"/>
+  </g>
+</svg>

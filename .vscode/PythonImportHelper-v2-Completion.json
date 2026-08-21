@@ -1,0 +1,101 @@
+[
+    {
+        "label": "os",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "os",
+        "description": "os",
+        "detail": "os",
+        "documentation": {}
+    },
+    {
+        "label": "struct",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "struct",
+        "description": "struct",
+        "detail": "struct",
+        "documentation": {}
+    },
+    {
+        "label": "zlib",
+        "kind": 6,
+        "isExtraImport": true,
+        "importPath": "zlib",
+        "description": "zlib",
+        "detail": "zlib",
+        "documentation": {}
+    },
+    {
+        "label": "lerp",
+        "kind": 2,
+        "importPath": "scripts.make-icons",
+        "description": "scripts.make-icons",
+        "peekOfCode": "def lerp(a, b, t):\n    return tuple(round(a[i] + (b[i] - a[i]) * t) for i in range(3))\nTOP = (10, 132, 255)     # --accent (dark) #0A84FF\nBOTTOM = (94, 92, 230)   # #5E5CE6\ndef rounded_rect_alpha(x, y, w, h, r, px, py):\n    \"\"\"1 if the point is inside the rounded rect, else 0 (sampling is done by SS).\"\"\"\n    if px < x or py < y or px > x + w or py > y + h:\n        return False\n    cx = min(max(px, x + r), x + w - r)\n    cy = min(max(py, y + r), y + h - r)",
+        "detail": "scripts.make-icons",
+        "documentation": {}
+    },
+    {
+        "label": "rounded_rect_alpha",
+        "kind": 2,
+        "importPath": "scripts.make-icons",
+        "description": "scripts.make-icons",
+        "peekOfCode": "def rounded_rect_alpha(x, y, w, h, r, px, py):\n    \"\"\"1 if the point is inside the rounded rect, else 0 (sampling is done by SS).\"\"\"\n    if px < x or py < y or px > x + w or py > y + h:\n        return False\n    cx = min(max(px, x + r), x + w - r)\n    cy = min(max(py, y + r), y + h - r)\n    return (px - cx) ** 2 + (py - cy) ** 2 <= r * r\ndef draw(size, *, maskable=False, opaque_square=False):\n    S = size * SS\n    # RGBA float accumulation buffer at supersampled resolution",
+        "detail": "scripts.make-icons",
+        "documentation": {}
+    },
+    {
+        "label": "draw",
+        "kind": 2,
+        "importPath": "scripts.make-icons",
+        "description": "scripts.make-icons",
+        "peekOfCode": "def draw(size, *, maskable=False, opaque_square=False):\n    S = size * SS\n    # RGBA float accumulation buffer at supersampled resolution\n    buf = bytearray(S * S * 4)\n    if maskable:\n        # Maskable icons are cropped to a circle of 80% width by the launcher,\n        # so the artwork shrinks and the background bleeds to every edge.\n        content_scale = 0.54\n        radius = 0.0\n        bg_x = bg_y = 0.0",
+        "detail": "scripts.make-icons",
+        "documentation": {}
+    },
+    {
+        "label": "write_png",
+        "kind": 2,
+        "importPath": "scripts.make-icons",
+        "description": "scripts.make-icons",
+        "peekOfCode": "def write_png(path, size, pixels):\n    raw = b''.join(b'\\x00' + pixels[y * size * 4:(y + 1) * size * 4] for y in range(size))\n    def chunk(tag, data):\n        c = tag + data\n        return struct.pack('>I', len(data)) + c + struct.pack('>I', zlib.crc32(c) & 0xffffffff)\n    png = (b'\\x89PNG\\r\\n\\x1a\\n'\n           + chunk(b'IHDR', struct.pack('>IIBBBBB', size, size, 8, 6, 0, 0, 0))\n           + chunk(b'IDAT', zlib.compress(raw, 9))\n           + chunk(b'IEND', b''))\n    with open(path, 'wb') as f:",
+        "detail": "scripts.make-icons",
+        "documentation": {}
+    },
+    {
+        "label": "SS",
+        "kind": 5,
+        "importPath": "scripts.make-icons",
+        "description": "scripts.make-icons",
+        "peekOfCode": "SS = 4  # supersampling factor\ndef lerp(a, b, t):\n    return tuple(round(a[i] + (b[i] - a[i]) * t) for i in range(3))\nTOP = (10, 132, 255)     # --accent (dark) #0A84FF\nBOTTOM = (94, 92, 230)   # #5E5CE6\ndef rounded_rect_alpha(x, y, w, h, r, px, py):\n    \"\"\"1 if the point is inside the rounded rect, else 0 (sampling is done by SS).\"\"\"\n    if px < x or py < y or px > x + w or py > y + h:\n        return False\n    cx = min(max(px, x + r), x + w - r)",
+        "detail": "scripts.make-icons",
+        "documentation": {}
+    },
+    {
+        "label": "TOP",
+        "kind": 5,
+        "importPath": "scripts.make-icons",
+        "description": "scripts.make-icons",
+        "peekOfCode": "TOP = (10, 132, 255)     # --accent (dark) #0A84FF\nBOTTOM = (94, 92, 230)   # #5E5CE6\ndef rounded_rect_alpha(x, y, w, h, r, px, py):\n    \"\"\"1 if the point is inside the rounded rect, else 0 (sampling is done by SS).\"\"\"\n    if px < x or py < y or px > x + w or py > y + h:\n        return False\n    cx = min(max(px, x + r), x + w - r)\n    cy = min(max(py, y + r), y + h - r)\n    return (px - cx) ** 2 + (py - cy) ** 2 <= r * r\ndef draw(size, *, maskable=False, opaque_square=False):",
+        "detail": "scripts.make-icons",
+        "documentation": {}
+    },
+    {
+        "label": "BOTTOM",
+        "kind": 5,
+        "importPath": "scripts.make-icons",
+        "description": "scripts.make-icons",
+        "peekOfCode": "BOTTOM = (94, 92, 230)   # #5E5CE6\ndef rounded_rect_alpha(x, y, w, h, r, px, py):\n    \"\"\"1 if the point is inside the rounded rect, else 0 (sampling is done by SS).\"\"\"\n    if px < x or py < y or px > x + w or py > y + h:\n        return False\n    cx = min(max(px, x + r), x + w - r)\n    cy = min(max(py, y + r), y + h - r)\n    return (px - cx) ** 2 + (py - cy) ** 2 <= r * r\ndef draw(size, *, maskable=False, opaque_square=False):\n    S = size * SS",
+        "detail": "scripts.make-icons",
+        "documentation": {}
+    },
+    {
+        "label": "DEST",
+        "kind": 5,
+        "importPath": "scripts.make-icons",
+        "description": "scripts.make-icons",
+        "peekOfCode": "DEST = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, 'public')\nwrite_png(f'{DEST}/pwa-192.png', 192, draw(192))\nwrite_png(f'{DEST}/pwa-512.png', 512, draw(512))\nwrite_png(f'{DEST}/pwa-maskable-512.png', 512, draw(512, maskable=True))\nwrite_png(f'{DEST}/apple-touch-icon.png', 180, draw(180, opaque_square=True))\nwrite_png(f'{DEST}/favicon-32.png', 32, draw(32))",
+        "detail": "scripts.make-icons",
+        "documentation": {}
+    }
+]
