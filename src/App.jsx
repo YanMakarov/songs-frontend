@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import SongList from './components/SongList.jsx'
 import SongEditor from './components/SongEditor.jsx'
 import ChordLibraryPage from './components/ChordLibraryPage.jsx'
@@ -7,45 +8,31 @@ import { loadTheme, saveTheme, loadViewMode, saveViewMode, loadTextScale, saveTe
 import { applyTheme } from './lib/theme.js'
 import AppSettingsModal from './components/AppSettingsModal.jsx'
 import { UNDO_TIMEOUT_MS } from './lib/undo.js'
+import { discard, flush, getStatus, retry, subscribeConflict, subscribeStatus } from './lib/writeQueue.js'
+import { patchSong } from './lib/cacheBridge.js'
+import { useSetlistQuery, useSongQuery, useSongsQuery } from './lib/queries.js'
 import {
-  discard,
-  enqueue,
-  flush,
-  getStatus,
-  retry,
-  subscribeConflict,
-  subscribeSaved,
-  subscribeStatus,
-} from './lib/writeQueue.js'
-import {
-  ApiError,
-  createSong as apiCreateSong,
-  deleteSong as apiDeleteSong,
-  getSetlist as apiGetSetlist,
-  getSong as apiGetSong,
-  listSongs as apiListSongs,
-  reorderSongs as apiReorderSongs,
-  toSummary as apiToSummary,
-  updateSetlist as apiUpdateSetlist,
-} from './lib/api.js'
+  useCreateSongMutation,
+  useDeleteSongMutation,
+  useReorderSongsMutation,
+  useUpdateSetlistMutation,
+} from './lib/mutations.js'
 
 export default function App() {
-  const [songs, setSongs] = useState([])
-  const [songsLoading, setSongsLoading] = useState(true)
-  const [songsError, setSongsError] = useState(null)
-  const [setlist, setSetlist] = useState(null)
+  const { data: songs = [], isPending: songsPending, error: songsError, refetch: refetchSongs } = useSongsQuery()
+  const { data: setlist } = useSetlistQuery()
   const [pendingDelete, setPendingDelete] = useState(null)
   const [theme, setTheme] = useState(loadTheme)
   const [viewMode, setViewMode] = useState(loadViewMode)
   const [textScale, setTextScale] = useState(loadTextScale)
   const [colorScheme, setColorScheme] = useState(loadColorScheme)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const songsRef = useRef(songs)
   const pendingDeleteRef = useRef(null)
 
-  useEffect(() => {
-    songsRef.current = songs
-  }, [songs])
+  const createSong = useCreateSongMutation()
+  const deleteSong = useDeleteSongMutation()
+  const reorderSongs = useReorderSongsMutation()
+  const renameSetlist = useUpdateSetlistMutation()
 
   useEffect(() => {
     applyTheme(theme)
@@ -66,73 +53,38 @@ export default function App() {
     document.documentElement.setAttribute('data-color-scheme', colorScheme ? 'on' : 'off')
   }, [colorScheme])
 
-  const fetchSongs = useCallback(async () => {
-    setSongsLoading(true)
-    try {
-      const [data, setlistData] = await Promise.all([
-        apiListSongs(),
-        apiGetSetlist().catch(() => null),
-      ])
-      setSongs(sortSongs(Array.isArray(data) ? data : []))
-      if (setlistData) setSetlist(setlistData)
-      setSongsError(null)
-    } catch (err) {
-      console.error(err)
-      setSongsError(err instanceof Error ? err.message : 'Не удалось загрузить песни')
-    } finally {
-      setSongsLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchSongs()
-  }, [fetchSongs])
-
-  const handleSongMetadataChange = useCallback((detail) => {
-    if (!detail) return
-    const summary = apiToSummary(detail)
-    if (!summary) return
-    setSongs((prev) => sortSongs([...prev.filter((s) => s.id !== summary.id), summary]))
-  }, [])
-
   const handleCreate = useCallback(async () => {
     // Create song without default key - let user set it or detect from chords
-    const created = await apiCreateSong({ key: '', originalKey: '' })
-    handleSongMetadataChange(created)
+    const created = await createSong.mutateAsync({ key: '', originalKey: '' })
     return created.id
-  }, [handleSongMetadataChange])
+  }, [createSong])
 
-  const commitDelete = useCallback(
-    (id) => {
-      apiDeleteSong(id).catch((err) => {
-        console.error(err)
-        fetchSongs()
-      })
-    },
-    [fetchSongs],
-  )
-
+  // Deletion is deferred so the undo banner has something to cancel. Phase 6
+  // replaces this with an immediate soft delete plus a restore, which is both
+  // simpler and survives a reload — the server already supports it.
   const handleDelete = useCallback(
     (id) => {
-      const prev = songsRef.current
-      const index = prev.findIndex((s) => s.id === id)
-      if (index === -1) return
-      const song = prev[index]
-      if (pendingDeleteRef.current) {
-        clearTimeout(pendingDeleteRef.current.timer)
+      const song = songs.find((s) => s.id === id)
+      if (!song) return
+      const previous = pendingDeleteRef.current
+      if (previous) {
+        // Never drop a pending deletion silently: it is already hidden from
+        // the list, so not committing it would leave the interface and the
+        // database disagreeing.
+        clearTimeout(previous.timer)
+        deleteSong.mutate({ songId: previous.id, rev: previous.song.rev })
       }
       const expiresAt = Date.now() + UNDO_TIMEOUT_MS
       const timer = setTimeout(() => {
         pendingDeleteRef.current = null
         setPendingDelete(null)
-        commitDelete(id)
+        deleteSong.mutate({ songId: id, rev: song.rev })
       }, UNDO_TIMEOUT_MS)
-      const entry = { id, song, index, expiresAt, timer }
+      const entry = { id, song, expiresAt, timer }
       pendingDeleteRef.current = entry
-      setPendingDelete({ id, song, index, expiresAt })
-      setSongs((cur) => cur.filter((s) => s.id !== id))
+      setPendingDelete({ id, song, expiresAt })
     },
-    [commitDelete],
+    [songs, deleteSong],
   )
 
   const handleUndoDelete = useCallback(() => {
@@ -141,56 +93,39 @@ export default function App() {
     clearTimeout(pending.timer)
     pendingDeleteRef.current = null
     setPendingDelete(null)
-    setSongs((cur) => {
-      if (cur.some((s) => s.id === pending.song.id)) return cur
-      const next = [...cur]
-      const insertIndex = Math.min(pending.index, next.length)
-      next.splice(insertIndex, 0, pending.song)
-      return sortSongs(next)
-    })
   }, [])
 
   useEffect(() => {
     return () => {
-      if (pendingDeleteRef.current) {
-        clearTimeout(pendingDeleteRef.current.timer)
+      const pending = pendingDeleteRef.current
+      if (pending) {
+        clearTimeout(pending.timer)
         pendingDeleteRef.current = null
       }
     }
   }, [])
 
   const handleReorderSong = useCallback(
-    async (id, nextIndex) => {
-      let orderPayload = null
-      setSongs((prev) => {
-        const next = reorderList(prev, id, nextIndex)
-        if (!next) return prev
-        orderPayload = next.map((song) => song.id)
-        return next
-      })
-      if (!orderPayload) return
-      try {
-        await apiReorderSongs(orderPayload)
-      } catch (err) {
-        console.error(err)
-        fetchSongs()
-      }
+    (id, nextIndex) => {
+      const next = reorderList(songs, id, nextIndex)
+      if (!next) return
+      reorderSongs.mutate(next.map((song) => song.id))
     },
-    [fetchSongs],
+    [songs, reorderSongs],
   )
 
-  const handleSetlistRename = useCallback(async (name) => {
-    const trimmed = (name || '').trim()
-    if (!trimmed) return
-    setSetlist((prev) => (prev ? { ...prev, name: trimmed } : prev))
-    try {
-      const updated = await apiUpdateSetlist({ name: trimmed })
-      if (updated) setSetlist(updated)
-    } catch (err) {
-      console.error(err)
-      fetchSongs()
-    }
-  }, [fetchSongs])
+  const handleSetlistRename = useCallback(
+    (name) => {
+      const trimmed = (name || '').trim()
+      if (!trimmed) return
+      renameSetlist.mutate({ name: trimmed })
+    },
+    [renameSetlist],
+  )
+
+  // A song awaiting its undo window is hidden rather than removed from the
+  // cache, so cancelling costs nothing and cannot lose the row.
+  const visibleSongs = pendingDelete ? songs.filter((s) => s.id !== pendingDelete.id) : songs
 
   return (
     <>
@@ -200,10 +135,10 @@ export default function App() {
         path="/songs"
         element={
           <SongListRoute
-            songs={songs}
-            loading={songsLoading}
-            error={songsError}
-            onReload={fetchSongs}
+            songs={visibleSongs}
+            loading={songsPending && songs.length === 0}
+            error={songsError ? songsError.message : null}
+            onReload={refetchSongs}
             onCreate={handleCreate}
             onDelete={handleDelete}
             onUndoDelete={handleUndoDelete}
@@ -221,7 +156,6 @@ export default function App() {
         path="/songs/:songId"
         element={
           <SongEditorRoute
-            onSongMetadataChange={handleSongMetadataChange}
             viewMode={viewMode}
             onViewModeChange={setViewMode}
             theme={theme}
@@ -316,7 +250,6 @@ function SongListRoute({
 }
 
 function SongEditorRoute({
-  onSongMetadataChange,
   viewMode,
   onViewModeChange,
   theme,
@@ -326,9 +259,8 @@ function SongEditorRoute({
 }) {
   const { songId } = useParams()
   const navigate = useNavigate()
-  const [song, setSong] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
+  const queryClient = useQueryClient()
+  const { data: song, isPending, error, refetch } = useSongQuery(songId)
   const [saveError, setSaveError] = useState(null)
   const [conflict, setConflict] = useState(null)
   const songRef = useRef(null)
@@ -338,71 +270,46 @@ function SongEditorRoute({
   }, [song])
 
   // The queue lives at module scope and keeps retrying on its own, so these
-  // subscriptions are only about reflecting its state — unmounting the editor
-  // no longer abandons an unsent edit.
+  // subscriptions only reflect its state — unmounting the editor no longer
+  // abandons an unsent edit.
   useEffect(() => {
     const unsubscribeStatus = subscribeStatus((id, status) => {
       if (id !== songId) return
       setSaveError(status.error)
-    })
-    const unsubscribeSaved = subscribeSaved((id, updated) => {
-      onSongMetadataChange?.(updated)
-      if (id !== songId) return
-      // Take the server's version forward; keep the local lines, which may
-      // already be ahead of what this response acknowledges.
-      setSong((prev) => (prev ? mergeSongState(prev, stripLines(updated)) : prev))
     })
     const unsubscribeConflict = subscribeConflict((id, err) => {
       if (id !== songId) return
       setConflict(err)
     })
     setSaveError(getStatus(songId).error)
+    setConflict(null)
     return () => {
       unsubscribeStatus()
-      unsubscribeSaved()
       unsubscribeConflict()
     }
-  }, [songId, onSongMetadataChange])
+  }, [songId])
 
-  const loadSong = useCallback(
-    async ({ signal } = {}) => {
-      setLoading(true)
-      setError(null)
-      // Land any edit still queued for this song first, or the GET below could
-      // return a version that predates it.
-      await flush(songId)
-      try {
-        const data = await apiGetSong(songId)
-        if (signal?.aborted) return
-        setSong(data)
-        songRef.current = data
-        setConflict(null)
-        onSongMetadataChange?.(data)
-      } catch (err) {
-        if (signal?.aborted) return
-        if (err instanceof ApiError && err.status === 404) {
-          navigate('/songs', { replace: true })
-          return
-        }
-        setError(err instanceof Error ? err.message : 'Не удалось загрузить песню')
-      } finally {
-        if (!signal?.aborted) setLoading(false)
-      }
-    },
-    [songId, navigate, onSongMetadataChange],
-  )
+  // Land whatever is queued for this song before leaving it, so reopening it
+  // cannot read a version that predates the edit.
+  useEffect(() => {
+    return () => {
+      void flush(songId)
+    }
+  }, [songId])
 
   useEffect(() => {
-    const controller = new AbortController()
-    loadSong({ signal: controller.signal })
-    return () => controller.abort()
-  }, [loadSong])
+    // ApiError carries the HTTP status; anything else is a transport failure
+    // and the query layer keeps retrying it on its own.
+    if (error?.status === 404) {
+      navigate('/songs', { replace: true })
+    }
+  }, [error, navigate])
 
   const handleSongPatch = useCallback(
     (patch) => {
-      if (!songRef.current) return
-      let patchToApply = patch
       const currentSong = songRef.current
+      if (!currentSong) return
+      let patchToApply = patch
       const shouldAutoSetOriginalKey =
         Object.prototype.hasOwnProperty.call(patch, 'key') &&
         patch.originalKey === undefined &&
@@ -412,23 +319,21 @@ function SongEditorRoute({
       if (shouldAutoSetOriginalKey) {
         patchToApply = { ...patch, originalKey: patch.key }
       }
-      const timestamp = new Date().toISOString()
-      const applied = { ...patchToApply, updatedAt: timestamp }
-      setSong((prev) => mergeSongState(prev, applied))
-      songRef.current = mergeSongState(songRef.current, applied)
-      enqueue(songRef.current?.id || songId, patchToApply, currentSong.rev)
+      patchSong(queryClient, songId, { ...patchToApply, updatedAt: new Date().toISOString() })
     },
-    [songId],
+    [queryClient, songId],
   )
 
   // Taking the server's version: drop what could not be sent, then reload.
   const handleResolveConflict = useCallback(() => {
     discard(songId)
     setConflict(null)
-    loadSong()
-  }, [songId, loadSong])
+    refetch()
+  }, [songId, refetch])
 
-  if (loading) {
+  // With a warm cache there is nothing to wait for — this only shows on a
+  // first-ever visit to a song.
+  if (isPending && !song) {
     return (
       <div className="app">
         <div className="screen-state">
@@ -441,13 +346,13 @@ function SongEditorRoute({
     )
   }
 
-  if (error) {
+  if (error && !song) {
     return (
       <div className="app">
         <div className="screen-state">
           <div>
             <div className="screen-state-title">Не удалось загрузить песню</div>
-            <div className="screen-state-text">{error}</div>
+            <div className="screen-state-text">{error.message}</div>
             <button className="action-btn" onClick={() => navigate('/songs')}>
               К списку
             </button>
@@ -533,16 +438,6 @@ function shouldSeedOriginalKey(song) {
   return false
 }
 
-function sortSongs(list) {
-  return [...list].sort((a, b) => {
-    const posDiff = (a.position ?? 0) - (b.position ?? 0)
-    if (posDiff !== 0) return posDiff
-    const aTime = new Date(a.createdAt ?? 0).valueOf()
-    const bTime = new Date(b.createdAt ?? 0).valueOf()
-    return aTime - bTime
-  })
-}
-
 function reorderList(list, songId, nextIndex) {
   const currentIndex = list.findIndex((s) => s.id === songId)
   if (currentIndex === -1 || nextIndex < 0 || nextIndex >= list.length || currentIndex === nextIndex) {
@@ -552,19 +447,4 @@ function reorderList(list, songId, nextIndex) {
   const [moved] = next.splice(currentIndex, 1)
   next.splice(nextIndex, 0, moved)
   return next.map((song, index) => ({ ...song, position: index }))
-}
-
-function mergeSongState(song, patch) {
-  if (!song) return song
-  const next = { ...song, ...patch }
-  if (!Object.prototype.hasOwnProperty.call(patch, 'lines')) {
-    next.lines = song.lines
-  }
-  return next
-}
-
-function stripLines(detail) {
-  if (!detail) return detail
-  const { lines, ...rest } = detail
-  return rest
 }
