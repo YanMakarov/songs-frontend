@@ -1145,6 +1145,39 @@ button { cursor: pointer; }
   flex-direction: column;
   overflow: hidden;
 }
+.chord-picker:has(.fretboard-editor) {
+  width: min(380px, calc(100vw - 20px));
+  max-height: none;
+  padding: 10px;
+  gap: 8px;
+}
+.chord-picker-neck-header {
+  display: flex;
+}
+.chord-picker-neck-back {
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 2px;
+}
+.chord-picker-neck-back:hover {
+  color: var(--text);
+}
+.chord-picker-neck-btn {
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 10px;
+  border-radius: var(--radius-s);
+}
+.chord-picker-neck-btn:hover {
+  background: var(--bg-hover);
+}
 .chord-picker-input-row {
   display: flex;
   align-items: center;
@@ -1712,40 +1745,123 @@ button { cursor: pointer; }
 .fingering-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  justify-items: center;
-}
-@media (max-width: 480px) {
-  .fingering-grid {
-    grid-template-columns: 1fr;
-  }
+  gap: 12px;
+  justify-items: stretch;
 }
 .fingering-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
+  gap: 6px;
+  padding: 6px;
+  min-width: 0;
+  border-radius: var(--radius-m);
+  border: 2px solid transparent;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+}
+.fingering-card-delete {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.fingering-card-delete:hover {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+.fingering-card-delete svg {
+  width: 12px;
+  height: 12px;
+}
+.fingering-card:hover {
+  background: var(--bg-hover);
+}
+.fingering-card.selected {
+  border-color: var(--accent);
+}
+.fingering-card-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+.fingering-card.selected .fingering-card-label {
+  color: var(--accent);
+  font-weight: 600;
 }
 
-/* Chord diagram SVG --------------------------------------------------------*/
+/* Chord diagram SVG — a fixed dark "device" look regardless of app theme,
+   with neon dots. Scales to the grid column via the viewBox. */
 .chord-diagram {
-  color: var(--text);
+  width: 100%;
+  max-width: 140px;
+  height: auto;
   display: block;
+  background: #0a0a0c;
+  border-radius: var(--radius-s);
+  color: #e8e8ec;
+  padding: 6px 4px;
 }
 .chord-diagram-fret-label {
   font-size: 14px;
   font-weight: 700;
-  fill: var(--text-secondary);
+  fill: #9a9aa2;
 }
 .chord-diagram-mute {
   font-size: 14px;
   font-weight: 700;
-  fill: var(--text-secondary);
+  fill: #9a9aa2;
 }
 .chord-diagram-dot {
-  fill: var(--text);
+  fill: #39ff9d;
+  filter: drop-shadow(0 0 3px #39ff9d);
+}
+.chord-diagram-degree {
+  font-size: 8px;
+  font-weight: 700;
+  fill: #0a0a0c;
+  pointer-events: none;
 }
 .chord-diagram-open {
-  stroke: var(--text-secondary);
+  stroke: #9a9aa2;
+}
+.chord-diagram-barre {
+  fill: #39ff9d;
+  filter: drop-shadow(0 0 3px #39ff9d);
+}
+.chord-diagram-dot-group--dim .chord-diagram-dot {
+  fill: #3a4a44;
+  filter: none;
+}
+.chord-diagram-dot-group--dim .chord-diagram-degree {
+  fill: #7a8b85;
+}
+.chord-diagram-open--dim {
+  stroke: #4a5450;
+  opacity: 0.5;
+}
+.chord-diagram-barre--dim {
+  fill: #3a4a44;
+  filter: none;
+}
+.chord-diagram--dimmed .chord-diagram-structural {
+  opacity: 0.35;
+}
+.chord-diagram--dimmed {
+  background: #050506;
 }
 
 /* Fretboard editor ---------------------------------------------------------*/
@@ -1773,11 +1889,19 @@ button { cursor: pointer; }
 .fretboard-editor-input:focus {
   border-color: var(--accent);
 }
-.fretboard-editor-detected {
-  font-size: 18px;
-  font-weight: 700;
+.fretboard-editor-suggestion {
+  font-size: 13px;
+  font-weight: 600;
   color: var(--accent);
   white-space: nowrap;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.fretboard-editor-suggestion:hover {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 .fretboard-svg {
   border: 1px solid var(--border);
@@ -1846,6 +1970,10 @@ button { cursor: pointer; }
   background: var(--danger);
   color: #fff;
 }
+.fretboard-editor-library-status {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
 .fretboard-editor-actions {
   display: flex;
   justify-content: flex-end;
@@ -1879,25 +2007,24 @@ button { cursor: pointer; }
   cursor: not-allowed;
 }
 
-/* Fingering modal tabs */
 .fingering-modal-header-actions {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.fingering-modal-tab {
-  padding: 4px 12px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-s);
-  background: var(--bg);
-  color: var(--text-secondary);
+.fingering-modal-more {
+  display: block;
+  margin: 4px auto 0;
+  padding: 6px 12px;
+  border: none;
+  background: none;
+  color: var(--accent);
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
 }
-.fingering-modal-tab:hover {
-  background: var(--bg-hover);
-  color: var(--text);
+.fingering-modal-more:hover {
+  text-decoration: underline;
 }
 .fingering-modal-editor-link {
   display: block;
@@ -1957,4 +2084,150 @@ button { cursor: pointer; }
     box-shadow: none;
     transform: none;
   }
+}
+
+/* Chord shape library page -------------------------------------------------*/
+.chord-library-page {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg);
+}
+.chord-library-page .topbar {
+  flex-shrink: 0;
+}
+.chord-library-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  min-height: 0;
+}
+@media (max-width: 640px) {
+  .chord-library-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: 45vh 1fr;
+  }
+}
+.chord-library-list-pane {
+  border-right: 1px solid var(--border);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow-y: auto;
+}
+.chord-library-form-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-tertiary);
+  margin-top: 10px;
+}
+.chord-library-form-label:first-child {
+  margin-top: 0;
+}
+.chord-library-tag-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.chord-library-tag-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+}
+.chord-library-tag-row--wrap {
+  flex-wrap: wrap;
+}
+.chord-library-tag {
+  flex: 1;
+  min-width: 30px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: var(--font-mono);
+  text-align: center;
+}
+.chord-library-tag-row--wrap .chord-library-tag {
+  flex: none;
+}
+.chord-library-tag:hover {
+  background: var(--bg-hover);
+}
+.chord-library-tag.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.chord-library-detail-pane {
+  padding: 20px;
+  min-height: 0;
+  overflow-y: auto;
+}
+.chord-library-detail-header {
+  position: sticky;
+  top: -20px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 22px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  margin: -20px -20px 16px;
+  padding: 20px 20px 12px;
+  background: var(--bg);
+}
+.chord-library-add-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+}
+.chord-library-add-btn:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.chord-library-card {
+  cursor: default;
+}
+.chord-library-hint {
+  color: var(--text-secondary);
+  font-size: 14px;
+  padding: 8px 4px;
+}
+.shape-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.shape-editor-info {
+  font-size: 13px;
+  color: var(--text-secondary);
+  min-height: 18px;
+}
+.shape-editor-name-input {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+}
+.shape-editor-modal {
+  width: min(560px, calc(100vw - 40px));
 }

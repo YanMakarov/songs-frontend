@@ -9,6 +9,7 @@ import { IconChevronLeft, IconPlus, IconSettings, IconUpload, IconEye, IconMusic
 import ThemeMenu from './ThemeMenu.jsx'
 import Tooltip from './Tooltip.jsx'
 import { transposeChord, transposeKey, parseKey, keySemitoneDelta } from '../lib/music.js'
+import { decodeVoicing, encodeVoicing } from '../lib/voicing.js'
 import { emptyLine, sectionLine, instrumentalLine, pagebreakLine, uid, loadLocalSongOverride, saveLocalSongOverride, clearLocalSongOverride } from '../lib/storage.js'
 import { collapseRepeats } from '../lib/repeats.js'
 import PrintPreview from './PrintPreview.jsx'
@@ -43,11 +44,12 @@ export default function SongEditor({
   onThemeChange,
   textScale,
   onOpenSettings,
+  onOpenLibrary,
 }) {
   const [picker, setPicker] = useState(null)
   const [addMenu, setAddMenu] = useState(null)
   const [chordMenu, setChordMenu] = useState(null)
-  const [fingeringChord, setFingeringChord] = useState(null)
+  const [fingeringTarget, setFingeringTarget] = useState(null)
   const [charWidth, setCharWidth] = useState(8.6)
   const [drag, setDrag] = useState(null)
   const [lineDrag, setLineDrag] = useState(null)
@@ -553,7 +555,9 @@ export default function SongEditor({
     const newKey = transposeKey(base.key, delta)
     const preferFlat = parseKey(newKey).preferFlat
     const lines = base.lines.map((l) => {
-      const chords = l.chords.map((c) => ({ ...c, chord: transposeChord(c.chord, delta, preferFlat) }))
+      // A stored fingering is tied to specific frets; it doesn't survive a
+      // key change (an open-position shape has no transposed equivalent).
+      const chords = l.chords.map((c) => ({ ...c, chord: transposeChord(c.chord, delta, preferFlat), voicing: null }))
       if (l.type === 'section' && l.key) {
         return { ...l, chords, key: transposeKey(l.key, delta) }
       }
@@ -615,15 +619,23 @@ export default function SongEditor({
     setPicker(null)
   }
 
-  function commitPicker(chord) {
+  // frets: only set when the chord came from the neck tab (tapped, not
+  // typed) — encoded and used as-is; otherwise any prior fingering is kept
+  // only if the symbol didn't actually change.
+  function commitPicker(chord, frets = null) {
     if (!picker) return
     const line = effectiveSong.lines.find((l) => l.id === picker.lineId)
     if (!line) return closePicker()
+    const voicing = frets ? encodeVoicing(frets) : null
     let chords
     if (picker.mode === 'add') {
-      chords = [...line.chords, { id: uid(), position: picker.position, chord }]
+      chords = [...line.chords, { id: uid(), position: picker.position, chord, voicing }]
     } else {
-      chords = line.chords.map((c) => (c.id === picker.chordId ? { ...c, chord } : c))
+      chords = line.chords.map((c) =>
+        c.id === picker.chordId
+          ? { ...c, chord, voicing: frets ? voicing : c.chord === chord ? c.voicing : null }
+          : c
+      )
     }
     updateLine(picker.lineId, { chords })
     closePicker()
@@ -661,18 +673,25 @@ export default function SongEditor({
   }
   function handleChordMenuEdit() {
     if (!chordMenu) return
+    const line = effectiveSong.lines.find((l) => l.id === chordMenu.lineId)
+    const chord = line?.chords.find((c) => c.id === chordMenu.chordId)
     openPicker({
       lineId: chordMenu.lineId,
       mode: 'edit',
       chordId: chordMenu.chordId,
       initialValue: chordMenu.chordText,
+      initialVoicing: decodeVoicing(chord?.voicing),
       anchor: chordMenu.anchor,
     })
     closeChordMenu()
   }
   function handleChordMenuDelete() {
     if (!chordMenu) return
-    const line = song.lines.find((l) => l.id === chordMenu.lineId)
+    // Must read from effectiveSong (song + any local transpose override) —
+    // chordMenu.chordId comes from what's actually rendered, and while
+    // transposed that has different chord ids than the raw `song` object,
+    // so looking it up there silently found nothing to delete.
+    const line = effectiveSong.lines.find((l) => l.id === chordMenu.lineId)
     if (line) {
       updateLine(line.id, { chords: line.chords.filter((c) => c.id !== chordMenu.chordId) })
     }
@@ -680,21 +699,44 @@ export default function SongEditor({
   }
   function handleChordMenuFingering() {
     if (!chordMenu) return
-    setFingeringChord(chordMenu.chordText)
+    const line = effectiveSong.lines.find((l) => l.id === chordMenu.lineId)
+    const chord = line?.chords.find((c) => c.id === chordMenu.chordId)
+    setFingeringTarget({
+      lineId: chordMenu.lineId,
+      chordId: chordMenu.chordId,
+      chordText: chordMenu.chordText,
+      voicing: chord?.voicing || null,
+    })
     closeChordMenu()
   }
-  function handleFingeringCommit(newChordName) {
-    if (!chordMenu) return
-    const line = effectiveSong.lines.find((l) => l.id === chordMenu.lineId)
+  // Picked one of the fingering cards from the library for this exact
+  // chord — keep the name, just remember which shape to use here. Stays open
+  // (with the picked card now highlighted) so the choice is visible without
+  // reopening the modal. `code` is already the library's encoded string.
+  function handleSelectVoicing(code) {
+    if (!fingeringTarget) return
+    const line = effectiveSong.lines.find((l) => l.id === fingeringTarget.lineId)
     if (!line) return
     const chords = line.chords.map((c) =>
-      c.id === chordMenu.chordId ? { ...c, chord: newChordName } : c
+      c.id === fingeringTarget.chordId ? { ...c, voicing: code } : c
     )
     updateLine(line.id, { chords })
-    setFingeringChord(null)
+    setFingeringTarget((cur) => (cur ? { ...cur, voicing: code } : cur))
+  }
+  // Clicking the already-selected card again: clear it, back to "no specific
+  // shape pinned for this spot".
+  function handleDeselectVoicing() {
+    if (!fingeringTarget) return
+    const line = effectiveSong.lines.find((l) => l.id === fingeringTarget.lineId)
+    if (!line) return
+    const chords = line.chords.map((c) =>
+      c.id === fingeringTarget.chordId ? { ...c, voicing: null } : c
+    )
+    updateLine(line.id, { chords })
+    setFingeringTarget((cur) => (cur ? { ...cur, voicing: null } : cur))
   }
   function closeFingeringModal() {
-    setFingeringChord(null)
+    setFingeringTarget(null)
   }
 
   function handlePickFile() {
@@ -884,6 +926,7 @@ export default function SongEditor({
         <ChordPicker
           songKey={effectiveKeys[picker.lineId] || song.key}
           initialValue={picker.initialValue || ''}
+          initialVoicing={picker.initialVoicing || null}
           canDelete={picker.mode === 'edit'}
           anchor={picker.anchor}
           onCommit={commitPicker}
@@ -943,11 +986,14 @@ export default function SongEditor({
         />
       )}
 
-      {fingeringChord && (
+      {fingeringTarget && (
         <ChordFingeringModal
-          chordText={fingeringChord}
+          chordText={fingeringTarget.chordText}
+          selectedVoicing={fingeringTarget.voicing}
           onClose={closeFingeringModal}
-          onCommit={handleFingeringCommit}
+          onSelectVoicing={handleSelectVoicing}
+          onDeselectVoicing={handleDeselectVoicing}
+          onOpenLibrary={onOpenLibrary}
         />
       )}
 

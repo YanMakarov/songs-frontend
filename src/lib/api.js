@@ -89,6 +89,19 @@ export async function reorderSongs(order) {
   await request(`${SONGS_ENDPOINT}/reorder`, { method: 'POST', body: { order } })
 }
 
+export async function listMovableShapes() {
+  const data = await request(`/movable-shapes/`)
+  return Array.isArray(data) ? data : []
+}
+
+export async function createMovableShape(payload) {
+  return request(`/movable-shapes/`, { method: 'POST', body: payload })
+}
+
+export async function deleteMovableShape(shapeId) {
+  await request(`/movable-shapes/${shapeId}`, { method: 'DELETE' })
+}
+
 export async function importPdf(file) {
   if (!file) return null
   const formData = new FormData()

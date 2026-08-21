@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom'
+import { Navigate, Route, Routes, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import SongList from './components/SongList.jsx'
 import SongEditor from './components/SongEditor.jsx'
+import ChordLibraryPage from './components/ChordLibraryPage.jsx'
 import { loadTheme, saveTheme, loadViewMode, saveViewMode, loadTextScale, saveTextScale, loadColorScheme, saveColorScheme } from './lib/storage.js'
 import { applyTheme } from './lib/theme.js'
 import AppSettingsModal from './components/AppSettingsModal.jsx'
@@ -220,6 +221,7 @@ export default function App() {
           />
         }
       />
+      <Route path="/chords-library" element={<ChordLibraryRoute />} />
       <Route path="*" element={<Navigate to="/songs" replace />} />
       </Routes>
       <AppSettingsModal
@@ -298,6 +300,7 @@ function SongListRoute({
       theme={theme}
       onThemeChange={onThemeChange}
       onOpenSettings={onOpenSettings}
+      onOpenLibrary={() => navigate('/chords-library')}
     />
   )
 }
@@ -490,6 +493,7 @@ function SongEditorRoute({
         onThemeChange={onThemeChange}
         textScale={textScale}
         onOpenSettings={onOpenSettings}
+        onOpenLibrary={(chord) => navigate(`/chords-library${chord ? `?chord=${encodeURIComponent(chord)}` : ''}`)}
       />
       {saveError && (
         <div className="save-banner" role="status">
@@ -501,6 +505,12 @@ function SongEditorRoute({
       )}
     </>
   )
+}
+
+function ChordLibraryRoute() {
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  return <ChordLibraryPage initialChord={searchParams.get('chord') || null} onBack={() => navigate(-1)} />
 }
 
 function hasOriginalKeyValue(song) {

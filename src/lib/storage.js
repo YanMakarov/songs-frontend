@@ -5,6 +5,7 @@ const VIEW_MODE_KEY = 'chords_app_view_mode_v1'
 const TEXT_SCALE_KEY = 'chords_app_text_scale_v1'
 const COLOR_SCHEME_KEY = 'chords_app_color_scheme_v1'
 const LOCAL_SONG_PREFIX = 'chords_app_local_song_'
+const CUSTOM_SHAPES_KEY = 'chords_app_custom_shapes_v1'
 
 export function uid() {
   return Math.random().toString(36).slice(2, 10) + Date.now().toString(36)
@@ -96,4 +97,41 @@ export function saveLocalSongOverride(songId, override) {
 export function clearLocalSongOverride(songId) {
   if (!songId) return
   localStorage.removeItem(LOCAL_SONG_PREFIX + songId)
+}
+
+// User-authored fingerings, keyed by exact chord symbol (e.g. "Bm", "Cadd9").
+// Built up by hand-placing a shape in the fretboard editor — separate from
+// the curated library (which is fixed, built-in) so a personal shape shows
+// up as its own card and can be removed again.
+function loadAllCustomShapes() {
+  try {
+    const raw = localStorage.getItem(CUSTOM_SHAPES_KEY)
+    const parsed = raw ? JSON.parse(raw) : {}
+    return parsed && typeof parsed === 'object' ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+export function loadCustomShapes(chordText) {
+  const all = loadAllCustomShapes()
+  return Array.isArray(all[chordText]) ? all[chordText] : []
+}
+
+export function addCustomShape(chordText, code) {
+  if (!chordText || !code) return
+  const all = loadAllCustomShapes()
+  const list = Array.isArray(all[chordText]) ? all[chordText] : []
+  if (!list.includes(code)) {
+    all[chordText] = [...list, code]
+    localStorage.setItem(CUSTOM_SHAPES_KEY, JSON.stringify(all))
+  }
+}
+
+export function removeCustomShape(chordText, code) {
+  if (!chordText || !code) return
+  const all = loadAllCustomShapes()
+  const list = Array.isArray(all[chordText]) ? all[chordText] : []
+  all[chordText] = list.filter((c) => c !== code)
+  localStorage.setItem(CUSTOM_SHAPES_KEY, JSON.stringify(all))
 }

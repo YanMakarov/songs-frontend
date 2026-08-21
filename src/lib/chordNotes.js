@@ -22,6 +22,7 @@ const QUALITY_INTERVALS = {
   '7sus4':  [0, 5, 7, 10],
   'dim7':   [0, 3, 6, 9],
   'm7b5':   [0, 3, 6, 10],
+  '7b5':    [0, 4, 6, 10],
   '5':      [0, 7],
   '11':     [0, 4, 7, 10, 14, 17],
   'm11':    [0, 3, 7, 10, 14, 17],
@@ -90,12 +91,16 @@ export function chordToNotes(chordStr) {
 // Given a set of note semitones, find the best matching chord name.
 // Tries each note as potential root, finds quality with most interval matches.
 // If the lowest note (bass) differs from the root, returns a slash chord.
+// explicitBass: pass the note actually played on the lowest string, when known
+// (e.g. from a fretboard shape) — a Set has no ordering, so without it the
+// bass would have to be guessed as "smallest semitone number", which is not
+// the same thing as "lowest-pitched note" and produces wrong slash chords.
 // Returns { name: string, root: number, quality: string, bass: number|null } or null
-export function notesToChord(noteSet) {
+export function notesToChord(noteSet, explicitBass = null) {
   if (!noteSet || noteSet.size < 2) return null
 
   const notes = Array.from(noteSet).sort((a, b) => a - b)
-  const bassNote = notes[0]
+  const bassNote = explicitBass !== null && noteSet.has(explicitBass) ? explicitBass : notes[0]
 
   let best = null
 

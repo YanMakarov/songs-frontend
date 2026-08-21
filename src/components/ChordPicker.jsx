@@ -1,22 +1,28 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { diatonicChords, fullChordCatalogue, parseKey } from '../lib/music.js'
 import { IconTrash } from './Icons.jsx'
 import Tooltip from './Tooltip.jsx'
+import ChordFretboardEditor from './ChordFretboardEditor.jsx'
 
 // Floating popover: pick a chord from key-diatonic suggestions, the full
-// catalogue, or type any free-form chord text.
-export default function ChordPicker({ songKey, initialValue, canDelete, anchor, onCommit, onDelete, onClose }) {
+// catalogue, type any free-form chord text, or (if the name isn't known)
+// switch to the neck and tap it out — matched against the shared shape
+// library, or added to it under whatever name is confirmed.
+export default function ChordPicker({ songKey, initialValue, initialVoicing, canDelete, anchor, onCommit, onDelete, onClose }) {
   const [query, setQuery] = useState(initialValue || '')
+  const [showNeck, setShowNeck] = useState(false)
   const inputRef = useRef(null)
   const popRef = useRef(null)
   const [pos, setPos] = useState({ top: anchor.y, left: anchor.x })
 
   useEffect(() => {
-    inputRef.current?.focus()
-    inputRef.current?.select()
-  }, [])
+    if (!showNeck) {
+      inputRef.current?.focus()
+      inputRef.current?.select()
+    }
+  }, [showNeck])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = popRef.current
     if (!el) return
     const rect = el.getBoundingClientRect()
@@ -28,7 +34,7 @@ export default function ChordPicker({ songKey, initialValue, canDelete, anchor, 
     if (top + rect.height + margin > window.innerHeight) top = anchor.y - rect.height - 10
     if (top < margin) top = margin
     setPos({ top, left })
-  }, [anchor])
+  }, [anchor, showNeck])
 
   const { preferFlat } = parseKey(songKey)
   const diatonic = useMemo(() => diatonicChords(songKey), [songKey])
@@ -44,6 +50,10 @@ export default function ChordPicker({ songKey, initialValue, canDelete, anchor, 
     const val = (chord ?? query).trim()
     if (!val) return
     onCommit(val)
+  }
+
+  function handleNeckCommit({ name, frets }) {
+    onCommit(name, frets)
   }
 
   function onKeyDown(e) {
@@ -65,49 +75,72 @@ export default function ChordPicker({ songKey, initialValue, canDelete, anchor, 
         style={{ top: pos.top, left: pos.left }}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="chord-picker-input-row">
-          <input
-            ref={inputRef}
-            value={query}
-            placeholder="Аккорд, напр. Am7"
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={onKeyDown}
-          />
-          {canDelete && (
-            <Tooltip label="Удалить аккорд">
-              <button className="chord-picker-delete" onClick={onDelete} aria-label="Удалить аккорд">
-                <IconTrash />
+        {showNeck ? (
+          <>
+            <div className="chord-picker-neck-header">
+              <button className="chord-picker-neck-back" onClick={() => setShowNeck(false)}>
+                ← Список
               </button>
-            </Tooltip>
-          )}
-        </div>
-        <div className="chord-picker-list">
-          {filteredDiatonic.length > 0 && (
-            <>
-              <div className="chord-picker-group-label">Из тональности {songKey}</div>
-              {filteredDiatonic.map((c) => (
-                <button key={'d' + c} className="chord-picker-item" onClick={() => commit(c)}>
-                  {c}
-                </button>
-              ))}
-            </>
-          )}
-          {filteredOther.length > 0 && (
-            <>
-              <div className="chord-picker-group-label">Другие аккорды</div>
-              {filteredOther.map((c) => (
-                <button key={'o' + c} className="chord-picker-item" onClick={() => commit(c)}>
-                  {c}
-                </button>
-              ))}
-            </>
-          )}
-          {filteredDiatonic.length === 0 && filteredOther.length === 0 && (
-            <div className="chord-picker-empty">
-              {q ? `Нажмите Enter, чтобы использовать «${query.trim()}»` : 'Введите аккорд'}
             </div>
-          )}
-        </div>
+            <ChordFretboardEditor
+              initialValue={query}
+              initialFrets={initialVoicing || null}
+              onCommit={handleNeckCommit}
+              onClose={onClose}
+            />
+          </>
+        ) : (
+          <>
+            <div className="chord-picker-input-row">
+              <input
+                ref={inputRef}
+                value={query}
+                placeholder="Аккорд, напр. Am7"
+                onChange={(e) => setQuery(e.target.value)}
+                onKeyDown={onKeyDown}
+              />
+              <Tooltip label="Не знаю название — натыкать на грифе">
+                <button className="chord-picker-neck-btn" onClick={() => setShowNeck(true)} aria-label="Открыть гриф">
+                  Гриф
+                </button>
+              </Tooltip>
+              {canDelete && (
+                <Tooltip label="Удалить аккорд">
+                  <button className="chord-picker-delete" onClick={onDelete} aria-label="Удалить аккорд">
+                    <IconTrash />
+                  </button>
+                </Tooltip>
+              )}
+            </div>
+            <div className="chord-picker-list">
+              {filteredDiatonic.length > 0 && (
+                <>
+                  <div className="chord-picker-group-label">Из тональности {songKey}</div>
+                  {filteredDiatonic.map((c) => (
+                    <button key={'d' + c} className="chord-picker-item" onClick={() => commit(c)}>
+                      {c}
+                    </button>
+                  ))}
+                </>
+              )}
+              {filteredOther.length > 0 && (
+                <>
+                  <div className="chord-picker-group-label">Другие аккорды</div>
+                  {filteredOther.map((c) => (
+                    <button key={'o' + c} className="chord-picker-item" onClick={() => commit(c)}>
+                      {c}
+                    </button>
+                  ))}
+                </>
+              )}
+              {filteredDiatonic.length === 0 && filteredOther.length === 0 && (
+                <div className="chord-picker-empty">
+                  {q ? `Нажмите Enter, чтобы использовать «${query.trim()}»` : 'Введите аккорд'}
+                </div>
+              )}
+            </div>
+          </>
+        )}
       </div>
     </>
   )

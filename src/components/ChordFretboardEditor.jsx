@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { chordToNotes, notesToChord, NOTE_NAMES, OPEN_STRINGS } from '../lib/chordNotes.js'
-import { findFingerings } from '../lib/fretboardSearch.js'
+import { getFingeringsForChord } from '../lib/chordShapes.js'
 
 const NUM_STRINGS = 6
 const VISIBLE_FRETS = 12
+// Tab-style order: thinnest string (high e, 1st) on top, low E (6th) on the
+// bottom — matches how guitarists read a chart, not the physical string index.
 const STRING_NAMES = ['E', 'A', 'D', 'G', 'B', 'E']
 
 const SVG_WIDTH = 520
@@ -22,13 +24,38 @@ function noteNameAt(stringIdx, fret) {
   return NOTE_NAMES[noteAt(stringIdx, fret)]
 }
 
-export default function ChordFretboardEditor({ initialValue, onCommit, onClose }) {
+// Visual row for string index s: 0 (high e) at the top, 5 (low E) at the bottom.
+function rowY(s) {
+  return TOP_MARGIN + (NUM_STRINGS - 1 - s) * STRING_SPACING
+}
+
+function positionsToFrets(positions) {
+  const frets = new Array(NUM_STRINGS).fill(-1)
+  for (const pos of positions) {
+    const [s, f] = pos.split(',').map(Number)
+    frets[s] = f
+  }
+  return frets
+}
+
+export default function ChordFretboardEditor({ initialValue, initialFrets, onCommit, onClose }) {
   // Track selected positions as "string,fret" strings
-  const [selectedPositions, setSelectedPositions] = useState(new Set())
+  const [selectedPositions, setSelectedPositions] = useState(() => {
+    if (!initialFrets) return new Set()
+    const set = new Set()
+    initialFrets.forEach((f, s) => {
+      if (f >= 0) set.add(`${s},${f}`)
+    })
+    return set
+  })
   const [chordInput, setChordInput] = useState(initialValue || '')
   const [bassNote, setBassNote] = useState(null)
   const [highlightedFrets, setHighlightedFrets] = useState(null)
   const inputRef = useRef(null)
+  // The very first render already has a hand-picked shape (from initialFrets,
+  // or the caller passed an existing chord name) — don't let the name-driven
+  // autofill effect below immediately stomp on it.
+  const skipNextAutofill = useRef(Boolean(initialFrets))
 
   // Derive note set from selected positions
   const selectedNotes = useMemo(() => {
@@ -45,47 +72,52 @@ export default function ChordFretboardEditor({ initialValue, onCommit, onClose }
     return chordToNotes(chordInput.trim())
   }, [chordInput])
 
+  // The lowest-indexed string among what's actually tapped is the physical
+  // bass note — not the smallest semitone number (see notesToChord).
+  const physicalBass = useMemo(() => {
+    let lowestString = null
+    for (const pos of selectedPositions) {
+      const [s, f] = pos.split(',').map(Number)
+      if (lowestString === null || s < lowestString.s) lowestString = { s, f }
+    }
+    return lowestString ? noteAt(lowestString.s, lowestString.f) : null
+  }, [selectedPositions])
+
   const detectedChord = useMemo(() => {
     if (selectedNotes.size < 2) return null
-    return notesToChord(selectedNotes)
-  }, [selectedNotes])
+    return notesToChord(selectedNotes, physicalBass)
+  }, [selectedNotes, physicalBass])
 
-  // When parsed chord changes (user typed a name), update positions and bass
+  const suggestionName = detectedChord && detectedChord.name !== chordInput.trim() ? detectedChord.name : null
+
+  // When the typed chord name changes, suggest positions for it (best curated
+  // shape first). The user can still tap their own — this only pre-fills.
   useEffect(() => {
-    if (parsedChord) {
-      const fingerings = findFingerings(parsedChord.notes, parsedChord.bass)
-      if (fingerings.length > 0) {
-        // Use the best fingering to set positions
-        const best = fingerings[0]
-        const posSet = new Set()
-        for (let s = 0; s < NUM_STRINGS; s++) {
-          if (best.frets[s] >= 0) {
-            posSet.add(`${s},${best.frets[s]}`)
-          }
-        }
-        setSelectedPositions(posSet)
-        setBassNote(parsedChord.bass)
-
-        // Highlight all positions from top fingerings
-        const highlightSet = new Set()
-        for (const f of fingerings.slice(0, 3)) {
-          for (let s = 0; s < NUM_STRINGS; s++) {
-            if (f.frets[s] >= 0) {
-              highlightSet.add(`${s},${f.frets[s]}`)
-            }
-          }
-        }
-        setHighlightedFrets(highlightSet)
+    if (!parsedChord) return
+    if (skipNextAutofill.current) {
+      skipNextAutofill.current = false
+      setBassNote(parsedChord.bass)
+      return
+    }
+    const fingerings = getFingeringsForChord(parsedChord)
+    if (fingerings.length > 0) {
+      const best = fingerings[0]
+      const posSet = new Set()
+      for (let s = 0; s < NUM_STRINGS; s++) {
+        if (best.frets[s] >= 0) posSet.add(`${s},${best.frets[s]}`)
       }
+      setSelectedPositions(posSet)
+      setBassNote(parsedChord.bass)
+
+      const highlightSet = new Set()
+      for (const f of fingerings.slice(0, 3)) {
+        for (let s = 0; s < NUM_STRINGS; s++) {
+          if (f.frets[s] >= 0) highlightSet.add(`${s},${f.frets[s]}`)
+        }
+      }
+      setHighlightedFrets(highlightSet)
     }
   }, [parsedChord])
-
-  // When detected chord changes (from manual placement), update input
-  useEffect(() => {
-    if (detectedChord && !chordInput.trim()) {
-      setChordInput(detectedChord.name)
-    }
-  }, [detectedChord, chordInput])
 
   function togglePosition(stringIdx, fret) {
     const key = `${stringIdx},${fret}`
@@ -93,6 +125,10 @@ export default function ChordFretboardEditor({ initialValue, onCommit, onClose }
     if (newSet.has(key)) {
       newSet.delete(key)
     } else {
+      // A string can only sound one fret at a time.
+      for (const pos of newSet) {
+        if (pos.startsWith(`${stringIdx},`)) newSet.delete(pos)
+      }
       newSet.add(key)
     }
     setSelectedPositions(newSet)
@@ -103,11 +139,18 @@ export default function ChordFretboardEditor({ initialValue, onCommit, onClose }
     setChordInput(e.target.value)
   }
 
+  function handleAcceptSuggestion() {
+    if (!suggestionName) return
+    skipNextAutofill.current = true
+    setChordInput(suggestionName)
+  }
+
+  // Chords can't be saved unnamed — Apply is disabled without one (see below).
   function handleCommit() {
     const name = detectedChord?.name || chordInput.trim()
-    if (name) {
-      onCommit(name)
-    }
+    if (!name) return
+    const frets = selectedPositions.size > 0 ? positionsToFrets(selectedPositions) : null
+    onCommit({ name, frets })
   }
 
   function handleClear() {
@@ -144,8 +187,10 @@ export default function ChordFretboardEditor({ initialValue, onCommit, onClose }
           placeholder="Введите аккорд (напр. Cmaj7, D/A)"
           autoFocus
         />
-        {detectedChord && !chordInput.trim() && (
-          <span className="fretboard-editor-detected">{detectedChord.name}</span>
+        {suggestionName && (
+          <button type="button" className="fretboard-editor-suggestion" onClick={handleAcceptSuggestion}>
+            Похоже на {suggestionName} →
+          </button>
         )}
       </div>
 
@@ -195,7 +240,7 @@ export default function ChordFretboardEditor({ initialValue, onCommit, onClose }
         />
 
         {Array.from({ length: NUM_STRINGS }, (_, s) => {
-          const y = TOP_MARGIN + s * STRING_SPACING
+          const y = rowY(s)
           return (
             <line
               key={`string-${s}`}
@@ -225,26 +270,25 @@ export default function ChordFretboardEditor({ initialValue, onCommit, onClose }
           )
         })}
 
-        {STRING_NAMES.map((name, s) => {
-          const y = TOP_MARGIN + s * STRING_SPACING
-          return (
-            <text
-              key={`string-name-${s}`}
-              x={LEFT_MARGIN - 12}
-              y={y}
-              textAnchor="end"
-              dominantBaseline="central"
-              className="fretboard-string-name"
-            >
-              {name}
-            </text>
-          )
-        })}
+        {STRING_NAMES.map((name, s) => (
+          <text
+            key={`string-name-${s}`}
+            x={LEFT_MARGIN - 12}
+            y={rowY(s)}
+            textAnchor="end"
+            dominantBaseline="central"
+            className="fretboard-string-name"
+          >
+            {name}
+          </text>
+        ))}
 
         {Array.from({ length: NUM_STRINGS }, (_, s) =>
           Array.from({ length: VISIBLE_FRETS + 1 }, (_, f) => {
-            const x = LEFT_MARGIN + f * FRET_WIDTH
-            const y = TOP_MARGIN + s * STRING_SPACING
+            // Open strings sit on the nut; fretted notes sit in the space
+            // between two fret wires, not on top of one.
+            const x = f === 0 ? LEFT_MARGIN : LEFT_MARGIN + (f - 0.5) * FRET_WIDTH
+            const y = rowY(s)
             const selected = isSelected(s, f)
             const highlighted = isHighlighted(s, f)
             const noteName = noteNameAt(s, f)

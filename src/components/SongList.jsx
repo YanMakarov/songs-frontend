@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { IconGrip, IconPlus, IconTrash, IconSettings } from './Icons.jsx'
+import { IconGrip, IconPlus, IconTrash, IconSettings, IconMusic } from './Icons.jsx'
 import ThemeMenu from './ThemeMenu.jsx'
 import Tooltip from './Tooltip.jsx'
 import ConfirmModal from './ConfirmModal.jsx'
@@ -29,6 +29,7 @@ export default function SongList({
   theme,
   onThemeChange,
   onOpenSettings,
+  onOpenLibrary,
 }) {
   const [draggingId, setDraggingId] = useState(null)
   const [dropIndicator, setDropIndicator] = useState(null)
@@ -256,6 +257,18 @@ export default function SongList({
           >
             {setlist?.name || 'Set list'}
           </button>
+        )}
+        {onOpenLibrary && (
+          <Tooltip label="Библиотека аппликатур">
+            <button
+              type="button"
+              className="icon-btn"
+              onClick={onOpenLibrary}
+              aria-label="Библиотека аппликатур"
+            >
+              <IconMusic />
+            </button>
+          </Tooltip>
         )}
         {onOpenSettings && (
           <Tooltip label="Настройки приложения">
