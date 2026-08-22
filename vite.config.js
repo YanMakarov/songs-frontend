@@ -25,8 +25,8 @@ export default ({ mode }) => {
         injectRegister: null,
         manifest: {
           id: "/",
-          name: "Chords",
-          short_name: "Chords",
+          name: "Songs",
+          short_name: "Songs",
           description:
             "Аккорды и тексты песен группы: сетлист, транспонирование, работа офлайн.",
           lang: "ru",

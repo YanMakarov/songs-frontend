@@ -326,6 +326,13 @@ export default function Line({
   //    (handled in handleChordContextMenu). No long-press behavior.
   function handleChordPointerDown(downEvent, chord) {
     downEvent.stopPropagation()
+    // Locked means nothing is edited. The chip keeps `pointer-events: auto`
+    // in the stylesheet so a tap can still open the fingering — that is what
+    // the lock is for, reading a song while playing it — and this is the
+    // guard that stops the same touch from also arming, dragging, or opening
+    // the edit menu. Returning before any listener is attached leaves the
+    // click handler that shows the fingering untouched.
+    if (locked) return
     if (downEvent.button != null && downEvent.button !== 0) return
     const isTouch = downEvent.pointerType === 'touch'
     chordGestureRef.current = true

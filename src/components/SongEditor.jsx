@@ -818,7 +818,9 @@ export default function SongEditor({
       onOpenPicker={openPicker}
       onDeleteLine={() => deleteLine(line.id)}
       onChordDragStart={handleChordDragStart}
-      onRequestLineMenu={handleRequestLineMenu}
+      // Same guard as onRequestInsertTop below: a long press or a double
+      // tap on a row opened the "add line" menu regardless of the lock.
+      onRequestLineMenu={locked ? undefined : handleRequestLineMenu}
       onChordMenu={handleChordMenuRequest}
       onLineDragStart={handleLineDragStart}
       draggingLineId={lineDrag?.line.id}

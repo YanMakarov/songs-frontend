@@ -113,7 +113,7 @@ export function BrandMark() {
       className="login-mark"
       viewBox="0 0 64 64"
       role="img"
-      aria-label="Chords"
+      aria-label="Songs"
       xmlns="http://www.w3.org/2000/svg"
     >
       <defs>
