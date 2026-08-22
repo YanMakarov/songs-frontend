@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from '../lib/auth.jsx'
 import { ApiError, isOffline } from '../lib/api.js'
+import { BrandMark, LoginBackdrop } from './LoginBackdrop.jsx'
 
 // The one screen that has to work before anything else does. It is reachable
 // with no session, no cache and no network, so it depends on nothing but the
@@ -56,7 +57,9 @@ export default function LoginPage() {
 
   return (
     <div className="login-page">
+      <LoginBackdrop />
       <form className="login-card" onSubmit={onSubmit}>
+        <BrandMark />
         <h1 className="login-title">Вход</h1>
         <p className="login-subtitle">Войдите, чтобы открыть сетлист группы.</p>
 
@@ -105,9 +108,9 @@ export default function LoginPage() {
           {busy ? 'Входим…' : 'Войти'}
         </button>
 
-        <p className="login-note">
+        {/* <p className="login-note">
           Учётные записи заводит админ.
-        </p>
+        </p> */}
       </form>
     </div>
   )

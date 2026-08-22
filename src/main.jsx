@@ -5,10 +5,20 @@ import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client
 import AuthGate from './components/AuthGate.jsx'
 import PwaUpdateBanner from './components/PwaUpdateBanner.jsx'
 import { AuthProvider } from './lib/auth.jsx'
+import { applyTheme } from './lib/theme.js'
+import { loadTheme } from './lib/storage.js'
 import { persistOptions, queryClient } from './lib/queryClient.js'
 import { attachWriteQueue } from './lib/cacheBridge.js'
 import { isStandalone, requestPersistentStorage } from './lib/install.js'
 import './index.css'
+
+// Design tokens live under [data-theme], so until the attribute is set every
+// var() in the stylesheet resolves to nothing — no card background, no field
+// border, no button fill. App.jsx applies the theme in an effect, but the
+// sign-in screen renders instead of <App>, so on a cold start while signed out
+// nothing ever set it. Doing it here covers every screen and also removes the
+// unstyled first paint on the signed-in path.
+applyTheme(loadTheme())
 
 // Results of queued song edits have to reach the same cache the UI reads from.
 // Attached once, outside React, because the queue outlives every component.

@@ -26,6 +26,11 @@
      file paints. */
   color-scheme: light;
   --bg: #F2F2F7;
+  /* Outline for text fields. --border (13% alpha) resolves to ~1.2:1
+     against the field it encloses, which is below the 3:1 that WCAG
+     1.4.11 asks of a control's boundary — on a white card the field
+     simply disappears. Measured: 3.08:1 to the fill, 3.44:1 to the card. */
+  --field-border: #8A8A8E;
   --surface: #FFFFFF;
   --surface-2: #F7F7FA;
   --surface-pressed: #E9E9EE;
@@ -58,6 +63,8 @@
 [data-theme='dark'] {
   color-scheme: dark;
   --bg: #000000;
+  /* 4.02:1 to the fill, 3.25:1 to the card. */
+  --field-border: #6C6C70;
   --surface: #1C1C1E;
   --surface-2: #2C2C2E;
   --surface-pressed: #38383A;
@@ -2563,15 +2570,84 @@ button { cursor: pointer; }
    styling here rather than a one-line override. */
 
 .login-page {
+  position: relative;
   min-height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 24px;
   background: var(--bg);
+  /* The chord box is drawn larger than the viewport on purpose, so the
+     strings run past the edges instead of ending in mid-air. */
+  overflow: hidden;
+}
+
+/* Decoration: the A major the app icon draws, at the size of a poster. */
+.login-backdrop {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.login-fretboard {
+  width: min(390px, 80vw);
+  height: auto;
+  /* Lifted so the part that identifies the chord — the nut, the open and
+     muted markers, the row of three dots — clears the top of the card. Left
+     centred it would all sit behind the card, which is the one place nobody
+     can see it. */
+  transform: translateY(-22%);
+  /* Low enough to stay scenery. The card sits on top and must keep its own
+     contrast; the diagram is not content. */
+  opacity: 0.16;
+}
+
+.login-fret-nut,
+.login-fret,
+.login-string,
+.login-marker {
+  stroke: var(--text-secondary);
+}
+
+.login-marker {
+  fill: none;
+}
+
+.login-dot {
+  fill: var(--accent);
+}
+
+/* A soft wash in the icon's two colours, so the card does not sit on flat
+   background. Sized in vmax so it scales with the viewport rather than
+   turning into a hard disc on a phone. */
+.login-glow {
+  position: absolute;
+  width: 90vmax;
+  height: 90vmax;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    color-mix(in srgb, #0A84FF 18%, transparent) 0%,
+    color-mix(in srgb, #5E5CE6 10%, transparent) 42%,
+    transparent 68%
+  );
+}
+
+.login-mark {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  align-self: center;
+  /* Matches the shadow the OS puts under the installed icon, so the screen
+     reads as the same app the user tapped. */
+  box-shadow: 0 6px 18px rgba(10, 132, 255, 0.28);
 }
 
 .login-card {
+  position: relative;
+  z-index: 1;
   width: 100%;
   max-width: 360px;
   display: flex;
@@ -2607,9 +2683,24 @@ button { cursor: pointer; }
 }
 
 /* 16px keeps iOS Safari from zooming the viewport when the field takes focus,
-   which on a phone leaves the page scrolled sideways after signing in. */
+   which on a phone leaves the page scrolled sideways after signing in.
+
+   The border and fill are overridden rather than inherited from
+   .settings-text-input: that control was designed for a dense settings list,
+   where surrounding labels and rows carry the structure. Alone on a card it
+   has to draw its own edge. */
 .login-field .settings-text-input {
   font-size: 16px;
+  padding: 11px 13px;
+  border: 1px solid var(--field-border);
+  border-radius: var(--radius-m);
+  background: var(--bg);
+}
+
+.login-field .settings-text-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-color: var(--accent);
 }
 
 .login-error {
