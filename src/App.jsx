@@ -9,6 +9,7 @@ import { applyTheme } from './lib/theme.js'
 import AppSettingsModal from './components/AppSettingsModal.jsx'
 import ConflictModal from './components/ConflictModal.jsx'
 import NamePrompt from './components/NamePrompt.jsx'
+import InstallPrompt from './components/InstallPrompt.jsx'
 import { useAuth } from './lib/auth.jsx'
 import { UNDO_TIMEOUT_MS } from './lib/undo.js'
 import { discard, flush, getStatus, hasPending, retry, subscribeConflict, subscribeStatus } from './lib/writeQueue.js'
@@ -186,6 +187,9 @@ export default function App() {
       {/* Only without an account: the display name comes from the session
           now, so asking for one would collect something nothing reads. */}
       {user ? null : <NamePrompt />}
+      {/* Inside <App>, so it is never shown over the sign-in screen: asking
+          somebody to install an app they cannot get into yet is noise. */}
+      <InstallPrompt />
       <AppSettingsModal
         open={settingsOpen}
         onClose={() => setSettingsOpen(false)}

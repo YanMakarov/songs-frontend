@@ -2806,3 +2806,107 @@ button { cursor: pointer; }
 .settings-signout-btn:active {
   background: var(--surface-pressed);
 }
+
+/* Install offer ---------------------------------------------------------- */
+/* Louder than .save-banner on purpose: that one reports on something the user
+   just did, this one interrupts to make an offer. It is the only interruption
+   the app makes, it happens once, and it replaces the browser's own
+   mini-infobar that lib/install.js suppresses. */
+
+.install-prompt {
+  position: fixed;
+  left: 50%;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 60;
+
+  width: min(420px, calc(100vw - 24px));
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px 14px;
+  padding: 16px;
+
+  border-radius: var(--radius-l);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-pop);
+
+  animation: install-prompt-in 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes install-prompt-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 12px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+/* Someone who turned motion down does not want a card sliding at them. */
+@media (prefers-reduced-motion: reduce) {
+  .install-prompt {
+    animation: none;
+  }
+}
+
+/* The same mark as the sign-in screen and the home-screen icon, so the offer
+   shows what the user would actually end up tapping. */
+.install-prompt .login-mark {
+  width: 44px;
+  height: 44px;
+  border-radius: 11px;
+  align-self: start;
+}
+
+.install-prompt-title {
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.install-prompt-body {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--text-secondary);
+}
+
+.install-prompt-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.install-prompt-later,
+.install-prompt-go {
+  padding: 9px 16px;
+  border-radius: var(--radius-m);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.install-prompt-later {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.install-prompt-later:active {
+  background: var(--surface-pressed);
+}
+
+.install-prompt-go {
+  border: none;
+  background: var(--accent);
+  color: #fff;
+}
+
+.install-prompt-go:active {
+  transform: scale(0.97);
+}
