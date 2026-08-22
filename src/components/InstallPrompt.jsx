@@ -106,7 +106,7 @@ export default function InstallPrompt() {
     <div className="install-prompt" role="region" aria-label="Установка приложения">
       <BrandMark />
       <div className="install-prompt-text">
-        <div className="install-prompt-title">Установить песенник?</div>
+        <div className="install-prompt-title">Установить приложение?</div>
         <p className="install-prompt-body">
           {platform === 'ios' ? (
             <>
