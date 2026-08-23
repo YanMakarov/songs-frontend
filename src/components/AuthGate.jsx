@@ -30,7 +30,7 @@ export default function AuthGate() {
   // only on a first run or after signing out — with a snapshot the branch
   // above already rendered the app.
   if (checking && !user) {
-    return <div className="login-splash">Открываем песенник…</div>
+    return <div className="login-splash">Открываем аккорды…</div>
   }
 
   return <LoginPage />
