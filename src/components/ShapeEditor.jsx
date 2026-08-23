@@ -85,7 +85,9 @@ export default function ShapeEditor({ onCommit, onClose }) {
 
   function handleSave() {
     if (!shape) return
-    onCommit({ name: name.trim() || null, rootString: shape.rootString, offsets: shape.offsets })
+    // `detected` rides along so the caller can show the saved shape under the
+    // chord it actually is, rather than whatever chord happened to be open.
+    onCommit({ name: name.trim() || null, rootString: shape.rootString, offsets: shape.offsets }, detected)
   }
 
   function isSelected(s, f) {

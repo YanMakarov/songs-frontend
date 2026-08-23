@@ -61,7 +61,9 @@ export default function ChordFingeringModal({
         const result = matchShape(shape, parsedChord.root, qualityIntervals, parsedChord.bass)
         return { shape, ...result }
       })
-      .filter((m) => m.fullMatch)
+      .filter((m) => m.fits)
+      // Complete voicings first, then the ones that drop an omissible tone.
+      .sort((a, b) => Number(b.exact) - Number(a.exact))
   }, [allShapes, parsedChord])
 
   function handleCardClick(frets) {

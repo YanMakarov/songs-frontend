@@ -39,7 +39,7 @@ function NoteTagPicker({ letter, accidental, onChange, allowNone, noneActive, on
             className={`chord-library-tag${noneActive ? ' active' : ''}`}
             onClick={onNone}
           >
-            нет
+          -
           </button>
         )}
         {LETTERS.map((l) => (
@@ -69,10 +69,34 @@ function NoteTagPicker({ letter, accidental, onChange, allowNone, noneActive, on
   )
 }
 
+function ShapeCard({ shape, frets, root, note, onDelete }) {
+  return (
+    <div className={`fingering-card chord-library-card${note ? ' chord-library-card--pinned' : ''}`}>
+      <button type="button" className="fingering-card-delete" aria-label="Удалить форму" onClick={onDelete}>
+        <IconClose />
+      </button>
+      <ChordDiagram
+        frets={frets}
+        startFret={computeStartFret(frets)}
+        barre={detectBarre(frets)}
+        root={root}
+      />
+      <span className="fingering-card-label">
+        {shape.name || (shape.rootString === 0 ? 'E-форма' : shape.rootString === 1 ? 'A-форма' : '')}
+      </span>
+      {note && <span className="chord-library-card-note">{note}</span>}
+    </div>
+  )
+}
+
 export default function ChordLibraryPage({ onBack, initialChord }) {
   const [shapes, setShapes] = useState([])
   const [loading, setLoading] = useState(true)
   const [showAdd, setShowAdd] = useState(false)
+  // Id of the shape saved a moment ago. It is shown even when it doesn't fit
+  // the chord on screen — a save that leaves the page looking unchanged reads
+  // as "nothing was added", which is exactly what it isn't.
+  const [justAddedId, setJustAddedId] = useState(null)
 
   const [rootLetter, setRootLetter] = useState('C')
   const [rootAccidental, setRootAccidental] = useState('')
@@ -122,8 +146,19 @@ export default function ChordLibraryPage({ onBack, initialChord }) {
   const results = useMemo(() => {
     return shapes
       .map((shape) => ({ shape, ...matchShape(shape, root, qualityIntervals, bass) }))
-      .filter((r) => r.fullMatch)
+      .filter((r) => r.fits)
+      // Complete voicings first, then the ones that drop an omissible tone.
+      .sort((a, b) => Number(b.exact) - Number(a.exact))
   }, [shapes, root, qualityIntervals, bass])
+
+  // The just-saved shape when it doesn't play the chord currently selected —
+  // pinned above the matches with a note saying so.
+  const pinned = useMemo(() => {
+    if (!justAddedId || results.some((r) => r.shape.id === justAddedId)) return null
+    const shape = shapes.find((s) => s.id === justAddedId)
+    if (!shape) return null
+    return { shape, ...matchShape(shape, root, qualityIntervals, bass) }
+  }, [justAddedId, results, shapes, root, qualityIntervals, bass])
 
   async function handleDelete(e, shapeId) {
     e.stopPropagation()
@@ -131,9 +166,29 @@ export default function ChordLibraryPage({ onBack, initialChord }) {
     reload()
   }
 
-  async function handleAddCommit(payload) {
-    await createMovableShape({ ...payload, isCustom: true })
+  function selectChord(detected) {
+    const rootLA = semitoneToLetterAccidental(detected.root)
+    setRootLetter(rootLA.letter)
+    setRootAccidental(rootLA.accidental)
+    setQuality(detected.quality)
+    if (detected.bass !== null && detected.bass !== undefined && detected.bass !== detected.root) {
+      const bassLA = semitoneToLetterAccidental(detected.bass)
+      setHasBass(true)
+      setBassLetter(bassLA.letter)
+      setBassAccidental(bassLA.accidental)
+    } else {
+      setHasBass(false)
+    }
+  }
+
+  async function handleAddCommit(payload, detected) {
+    const created = await createMovableShape({ ...payload, isCustom: true })
     setShowAdd(false)
+    // Land on the chord the shape actually spells, so the new form is on
+    // screen right after saving instead of being filtered out of a view the
+    // user never left.
+    if (detected) selectChord(detected)
+    setJustAddedId(created && created.id ? created.id : null)
     reload()
   }
 
@@ -153,6 +208,7 @@ export default function ChordLibraryPage({ onBack, initialChord }) {
             letter={rootLetter}
             accidental={rootAccidental}
             onChange={(l, a) => {
+              setJustAddedId(null)
               setRootLetter(l)
               setRootAccidental(a)
             }}
@@ -165,7 +221,10 @@ export default function ChordLibraryPage({ onBack, initialChord }) {
                 key={q || 'maj'}
                 type="button"
                 className={`chord-library-tag${quality === q ? ' active' : ''}`}
-                onClick={() => setQuality(q)}
+                onClick={() => {
+                  setJustAddedId(null)
+                  setQuality(q)
+                }}
               >
                 {qualityLabel(q)}
               </button>
@@ -178,8 +237,12 @@ export default function ChordLibraryPage({ onBack, initialChord }) {
             accidental={bassAccidental}
             allowNone
             noneActive={!hasBass}
-            onNone={() => setHasBass(false)}
+            onNone={() => {
+              setJustAddedId(null)
+              setHasBass(false)
+            }}
             onChange={(l, a) => {
+              setJustAddedId(null)
               setHasBass(true)
               setBassLetter(l)
               setBassAccidental(a)
@@ -198,23 +261,28 @@ export default function ChordLibraryPage({ onBack, initialChord }) {
             <div className="chord-library-hint">Загрузка…</div>
           ) : shapes.length === 0 ? (
             <div className="chord-library-hint">В библиотеке пока нет форм — добавьте первую</div>
-          ) : results.length === 0 ? (
+          ) : results.length === 0 && !pinned ? (
             <div className="chord-library-hint">Ни одна форма не подходит к «{chordName}» — добавьте новую</div>
           ) : (
             <div className="fingering-grid">
+              {pinned && (
+                <ShapeCard
+                  key={pinned.shape.id}
+                  shape={pinned.shape}
+                  frets={pinned.frets}
+                  root={root}
+                  note={`Сохранено, но не звучит как «${chordName}»`}
+                  onDelete={(e) => handleDelete(e, pinned.shape.id)}
+                />
+              )}
               {results.map(({ shape, frets }) => (
-                <div key={shape.id} className="fingering-card chord-library-card">
-                  <button type="button" className="fingering-card-delete" aria-label="Удалить форму" onClick={(e) => handleDelete(e, shape.id)}>
-                    <IconClose />
-                  </button>
-                  <ChordDiagram
-                    frets={frets}
-                    startFret={computeStartFret(frets)}
-                    barre={detectBarre(frets)}
-                    root={root}
-                  />
-                  <span className="fingering-card-label">{shape.name || (shape.rootString === 0 ? 'E-форма' : shape.rootString === 1 ? 'A-форма' : '')}</span>
-                </div>
+                <ShapeCard
+                  key={shape.id}
+                  shape={shape}
+                  frets={frets}
+                  root={root}
+                  onDelete={(e) => handleDelete(e, shape.id)}
+                />
               ))}
             </div>
           )}

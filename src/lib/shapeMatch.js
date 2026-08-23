@@ -1,15 +1,13 @@
 // Movable-shape matching: a shape is a fixed fretting pattern (root string +
 // per-string offsets from the barre fret). Its interval content relative to
 // its own root is fixed no matter which root it's moved to — this derives
-// that content and, for a chosen target chord, whether the shape produces it
-// exactly or only partially.
+// that content and, for a chosen target chord, whether the shape produces it.
 import { OPEN_STRINGS } from './chordNotes.js'
 
 const NUM_STRINGS = 6
-
-function noteAt(stringIdx, fret) {
-  return (OPEN_STRINGS[stringIdx] + fret) % 12
-}
+// Diagrams (and the 1-hex-char-per-string voicing code) stop here, so a shape
+// that only lands above this fret isn't offered for that root.
+const MAX_FRET = 15
 
 // Interval (0-11) each string contributes relative to the shape's own root,
 // keyed by string index; muted strings are absent. Transposition-invariant.
@@ -25,33 +23,67 @@ export function computeShapeIntervals(rootString, offsets) {
 }
 
 // Absolute frets when this shape's root is moved to targetRoot (0-11).
+// A shape can reach below its own root fret (a note on a higher string, at a
+// lower fret) — at the bottom of the neck that would land behind the nut, so
+// the whole shape moves up an octave instead of producing negative frets,
+// which the diagram would otherwise read as muted strings.
 export function computeShapeFrets(rootString, offsets, targetRoot) {
-  const barreFret = ((targetRoot - OPEN_STRINGS[rootString]) % 12 + 12) % 12
+  let barreFret = ((targetRoot - OPEN_STRINGS[rootString]) % 12 + 12) % 12
+  const sounding = offsets.filter((o) => o !== null && o !== undefined)
+  const minOffset = sounding.length ? Math.min(...sounding) : 0
+  while (barreFret + minOffset < 0) barreFret += 12
   return offsets.map((o) => (o === null || o === undefined ? -1 : o + barreFret))
 }
 
+// Chord tones a voicing may leave out and still be the chord it claims.
+// Six strings can't carry a five- or six-note chord and stay playable, and
+// the guitar's answer has always been to drop the perfect fifth first (it
+// says nothing the root doesn't already say), plus the 11th in a 13th chord.
+// Triads and power chords have nothing to spare — every note is load-bearing.
+function omissibleIntervals(qualityIntervals) {
+  const simple = qualityIntervals.map((iv) => ((iv % 12) + 12) % 12)
+  if (new Set(simple).size < 4) return new Set()
+  const omissible = new Set()
+  if (simple.includes(7)) omissible.add(7)
+  if (qualityIntervals.includes(21) && qualityIntervals.includes(17)) omissible.add(5)
+  return omissible
+}
+
 // Compares a shape (moved to targetRoot) against a target chord (quality
-// interval set + optional bass). A shape only "fits" when the two note sets
-// match exactly: every note it sounds is a chord tone, and every chord tone
-// (the bass included, if given) is actually present in the shape. Anything
-// less isn't shown at all — no partial credit.
+// interval set + optional bass).
+//
+// `fits`  — the shape is playable as this chord: it sounds no note outside
+//           the chord, carries every tone the chord can't do without, and
+//           reaches the bass note if one was asked for. Voicings that drop
+//           an omissible tone count; that's how extended chords are played.
+// `exact` — on top of that, nothing at all is missing. Used for ordering, so
+//           the complete voicings come first.
 export function matchShape(shape, targetRoot, qualityIntervals, bass = null) {
   const { rootString, offsets } = shape
   const frets = computeShapeFrets(rootString, offsets, targetRoot)
   const shapeIntervals = computeShapeIntervals(rootString, offsets)
   const shapeIntervalSet = new Set(Object.values(shapeIntervals))
 
-  const targetSet = new Set(qualityIntervals.map((iv) => iv % 12))
+  const targetSet = new Set(qualityIntervals.map((iv) => ((iv % 12) + 12) % 12))
+  const omissible = omissibleIntervals(qualityIntervals)
   const bassInterval = bass !== null && bass !== undefined ? ((bass - targetRoot) % 12 + 12) % 12 : null
 
-  let fullMatch = true
+  let foreign = false
   for (const iv of shapeIntervalSet) {
-    if (!targetSet.has(iv)) fullMatch = false
+    if (!targetSet.has(iv)) foreign = true
   }
-  for (const iv of targetSet) {
-    if (!shapeIntervalSet.has(iv)) fullMatch = false
-  }
-  if (bassInterval !== null && !shapeIntervalSet.has(bassInterval)) fullMatch = false
 
-  return { frets, fullMatch }
+  let missingRequired = false
+  let missingAny = false
+  for (const iv of targetSet) {
+    if (shapeIntervalSet.has(iv)) continue
+    missingAny = true
+    if (!omissible.has(iv)) missingRequired = true
+  }
+
+  const bassMissing = bassInterval !== null && !shapeIntervalSet.has(bassInterval)
+  const outOfRange = frets.some((f) => f > MAX_FRET)
+
+  const fits = !foreign && !missingRequired && !bassMissing && !outOfRange
+  return { frets, fits, exact: fits && !missingAny }
 }
