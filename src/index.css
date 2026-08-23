@@ -512,6 +512,19 @@ button { cursor: pointer; }
   letter-spacing: 0.01em;
 }
 
+/* Одна строка — иначе подсказка расползается на два ряда и начинает выглядеть
+   как поломка, а не как спокойное пояснение. На телефоне места ровно впритык,
+   поэтому кегль считается от ширины экрана: 34.5 — во столько раз строка шире
+   своего кегля, так что делением получаем размер, при котором она ещё влезает
+   (минус поля). min() не даёт ей вырасти обратно на широком экране. */
+@media (max-width: 640px) {
+  .lock-notice {
+    padding: 5px 8px;
+    font-size: min(12.5px, calc((100vw - 24px) / 34.5));
+    letter-spacing: 0;
+  }
+}
+
 /* --- Что отключается в режиме просмотра --------------------------------
    Только средства правки. Тема, размер текста, режим отображения,
    транспонирование и прокрутка остаются доступны: именно ими и пользуется
@@ -2540,6 +2553,40 @@ button { cursor: pointer; }
    for a match. */
 .chord-library-card--pinned {
   border-color: var(--accent);
+}
+/* The card's name is the rename affordance: a plain label until hovered,
+   then it reads as editable text. */
+.chord-library-card-name {
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  border-radius: var(--radius-s);
+  cursor: text;
+  font: inherit;
+  max-width: 100%;
+}
+.chord-library-card-name:hover,
+.chord-library-card-name:focus-visible {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.chord-library-card-name--unnamed {
+  font-style: italic;
+  opacity: 0.7;
+}
+.chord-library-card-name-input {
+  /* Matches .chord-diagram's max-width so the field sits under the diagram
+     instead of stretching across the whole card. */
+  width: 100%;
+  max-width: 140px;
+  align-self: center;
+  padding: 2px 4px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 12px;
+  text-align: center;
 }
 .chord-library-card-note {
   font-size: 11px;

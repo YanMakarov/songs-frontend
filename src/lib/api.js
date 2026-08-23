@@ -257,6 +257,10 @@ export async function createMovableShape(payload) {
   return request(`/movable-shapes/`, { method: 'POST', body: payload })
 }
 
+export async function renameMovableShape(shapeId, name) {
+  return request(`/movable-shapes/${shapeId}`, { method: 'PATCH', body: { name } })
+}
+
 export async function deleteMovableShape(shapeId) {
   await request(`/movable-shapes/${shapeId}`, { method: 'DELETE' })
 }

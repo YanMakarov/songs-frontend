@@ -1,11 +1,16 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import ChordDiagram from './ChordDiagram.jsx'
 import ShapeEditor from './ShapeEditor.jsx'
 import { chordToNotes, getAllQualities, getQualityIntervals, NOTE_NAMES } from '../lib/chordNotes.js'
 import { noteToSemitone } from '../lib/music.js'
 import { matchShape } from '../lib/shapeMatch.js'
 import { computeStartFret, detectBarre } from '../lib/voicing.js'
-import { createMovableShape, deleteMovableShape, listMovableShapes } from '../lib/api.js'
+import {
+  createMovableShape,
+  deleteMovableShape,
+  listMovableShapes,
+  renameMovableShape,
+} from '../lib/api.js'
 import { IconChevronLeft, IconClose, IconPlus } from './Icons.jsx'
 
 const LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B']
@@ -69,7 +74,42 @@ function NoteTagPicker({ letter, accidental, onChange, allowNone, noneActive, on
   )
 }
 
-function ShapeCard({ shape, frets, root, note, onDelete }) {
+// What a shape is called when it was saved without a name. Always some text,
+// never an empty string — the label doubles as the target you click to rename,
+// and there's nothing to aim at if it renders as nothing.
+function fallbackLabel(shape) {
+  if (shape.rootString === 0) return 'E-форма'
+  if (shape.rootString === 1) return 'A-форма'
+  return 'Без названия'
+}
+
+function ShapeCard({ shape, frets, root, note, onRename, onDelete }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
+  // Enter commits and unmounts the input; Escape unmounts it too. Either way
+  // the blur that follows must not fire a second save (or undo the cancel).
+  const settledRef = useRef(false)
+
+  function startEditing() {
+    settledRef.current = false
+    setDraft(shape.name || '')
+    setEditing(true)
+  }
+
+  function commit() {
+    if (settledRef.current) return
+    settledRef.current = true
+    setEditing(false)
+    const name = draft.trim()
+    if (name === (shape.name || '')) return
+    onRename(shape.id, name)
+  }
+
+  function cancel() {
+    settledRef.current = true
+    setEditing(false)
+  }
+
   return (
     <div className={`fingering-card chord-library-card${note ? ' chord-library-card--pinned' : ''}`}>
       <button type="button" className="fingering-card-delete" aria-label="Удалить форму" onClick={onDelete}>
@@ -81,9 +121,36 @@ function ShapeCard({ shape, frets, root, note, onDelete }) {
         barre={detectBarre(frets)}
         root={root}
       />
-      <span className="fingering-card-label">
-        {shape.name || (shape.rootString === 0 ? 'E-форма' : shape.rootString === 1 ? 'A-форма' : '')}
-      </span>
+      {editing ? (
+        <input
+          className="chord-library-card-name-input"
+          value={draft}
+          autoFocus
+          onFocus={(e) => e.target.select()}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              commit()
+            } else if (e.key === 'Escape') {
+              e.preventDefault()
+              cancel()
+            }
+          }}
+          placeholder={fallbackLabel(shape)}
+          aria-label="Название формы"
+        />
+      ) : (
+        <button
+          type="button"
+          className={`fingering-card-label chord-library-card-name${shape.name ? '' : ' chord-library-card-name--unnamed'}`}
+          title="Переименовать"
+          onClick={startEditing}
+        >
+          {shape.name || fallbackLabel(shape)}
+        </button>
+      )}
       {note && <span className="chord-library-card-note">{note}</span>}
     </div>
   )
@@ -160,6 +227,16 @@ export default function ChordLibraryPage({ onBack, initialChord }) {
     return { shape, ...matchShape(shape, root, qualityIntervals, bass) }
   }, [justAddedId, results, shapes, root, qualityIntervals, bass])
 
+  // Renaming touches one card, so it patches the loaded list in place instead
+  // of going through reload() — a full refetch would blank the whole pane to
+  // "Загрузка…" and back for a one-word edit.
+  async function handleRename(shapeId, name) {
+    const updated = await renameMovableShape(shapeId, name)
+    setShapes((prev) =>
+      prev.map((s) => (s.id === shapeId ? { ...s, name: updated ? updated.name : name || null } : s)),
+    )
+  }
+
   async function handleDelete(e, shapeId) {
     e.stopPropagation()
     await deleteMovableShape(shapeId)
@@ -186,8 +263,19 @@ export default function ChordLibraryPage({ onBack, initialChord }) {
     setShowAdd(false)
     // Land on the chord the shape actually spells, so the new form is on
     // screen right after saving instead of being filtered out of a view the
-    // user never left.
-    if (detected) selectChord(detected)
+    // user never left. Only when matchShape agrees, though — the detector can
+    // fall back to a best-effort name for a note set that plays no chord it
+    // knows, and jumping there would land on a chord this very page then has
+    // to caption "saved, but doesn't sound like it".
+    const detectedFits =
+      detected &&
+      matchShape(
+        { rootString: payload.rootString, offsets: payload.offsets },
+        detected.root,
+        getQualityIntervals(detected.quality) || [],
+        detected.bass ?? null,
+      ).fits
+    if (detectedFits) selectChord(detected)
     setJustAddedId(created && created.id ? created.id : null)
     reload()
   }
@@ -272,6 +360,7 @@ export default function ChordLibraryPage({ onBack, initialChord }) {
                   frets={pinned.frets}
                   root={root}
                   note={`Сохранено, но не звучит как «${chordName}»`}
+                  onRename={handleRename}
                   onDelete={(e) => handleDelete(e, pinned.shape.id)}
                 />
               )}
@@ -281,6 +370,7 @@ export default function ChordLibraryPage({ onBack, initialChord }) {
                   shape={shape}
                   frets={frets}
                   root={root}
+                  onRename={handleRename}
                   onDelete={(e) => handleDelete(e, shape.id)}
                 />
               ))}

@@ -88,6 +88,52 @@ export function chordToNotes(chordStr) {
   return { notes, root: rootSemitone, bass: bassSemitone, quality: suffix, rootName: root }
 }
 
+// Chord tones a voicing may leave out and still be the chord it claims.
+// Six strings can't carry a five- or six-note chord and stay playable, and
+// the guitar's answer has always been to drop the perfect fifth first (it
+// says nothing the root doesn't already say), then — from a 9th upward — the
+// third, which is why "x3543x" is played and named Cmaj9 even without an E.
+// The 11th goes too in a 13th chord. Triads and sevenths have nothing to
+// spare: every note is load-bearing.
+export function omissibleIntervals(qualityIntervals) {
+  const simple = qualityIntervals.map((iv) => ((iv % 12) + 12) % 12)
+  const distinct = new Set(simple)
+  if (distinct.size < 4) return new Set()
+  const omissible = new Set()
+  if (distinct.has(7)) omissible.add(7)
+  if (qualityIntervals.includes(21) && qualityIntervals.includes(17)) omissible.add(5)
+  if (distinct.size >= 5) {
+    if (distinct.has(4)) omissible.add(4)
+    else if (distinct.has(3)) omissible.add(3)
+  }
+  return omissible
+}
+
+// Does a set of intervals (0-11, relative to the root) play as this quality?
+// The single answer to "is this that chord", shared by the shape matcher and
+// by note-set detection — when they each had their own idea of it, the editor
+// would name a shape maj9 and the library would then refuse to file it there.
+//
+// `fits`  — nothing foreign sounds, and every tone the chord can't do without
+//           is present. `exact` — on top of that, nothing at all is missing.
+export function chordFitsIntervals(intervalSet, qualityIntervals) {
+  const targetSet = new Set(qualityIntervals.map((iv) => ((iv % 12) + 12) % 12))
+  const omissible = omissibleIntervals(qualityIntervals)
+
+  for (const iv of intervalSet) {
+    if (!targetSet.has(iv)) return { fits: false, exact: false }
+  }
+
+  let missingAny = false
+  for (const iv of targetSet) {
+    if (intervalSet.has(iv)) continue
+    missingAny = true
+    if (!omissible.has(iv)) return { fits: false, exact: false }
+  }
+
+  return { fits: true, exact: !missingAny }
+}
+
 // Given a set of note semitones, find the best matching chord name.
 // Tries each note as potential root, finds quality with most interval matches.
 // If the lowest note (bass) differs from the root, returns a slash chord.
@@ -119,6 +165,12 @@ export function notesToChord(noteSet, explicitBass = null) {
       const expectedSimple = expectedIntervals.map(iv => iv % 12)
       const expectedSet = new Set(expectedSimple)
 
+      // The one authority on "these notes are that chord" (shapeMatch.js asks
+      // it too). A quality the notes genuinely play always beats one they only
+      // resemble, whatever the scores say — otherwise this can name a shape a
+      // chord the library will then refuse to file under it.
+      const { fits } = chordFitsIntervals(uniqueIntervals, expectedIntervals)
+
       // Score: how many expected intervals are present
       let matchCount = 0
       for (const e of expectedSimple) {
@@ -134,10 +186,19 @@ export function notesToChord(noteSet, explicitBass = null) {
       const score = matchCount - extraCount * 0.5
       const coverage = matchCount / expectedSimple.length
 
-      if (coverage < 0.7) continue
+      // A near miss still needs to be near. A chord that fits is never a miss,
+      // and can sit below this line legitimately: a 13th voicing that drops
+      // every omissible tone covers barely half its own interval list.
+      if (!fits && coverage < 0.7) continue
 
-      if (!best || score > best.score || (score === best.score && coverage > best.coverage)) {
+      const better = !best
+        || (fits !== best.fits ? fits
+          : score !== best.score ? score > best.score
+          : coverage > best.coverage)
+
+      if (better) {
         best = {
+          fits,
           score,
           coverage,
           root: candidateRoot,

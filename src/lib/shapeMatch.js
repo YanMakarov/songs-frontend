@@ -2,7 +2,7 @@
 // per-string offsets from the barre fret). Its interval content relative to
 // its own root is fixed no matter which root it's moved to — this derives
 // that content and, for a chosen target chord, whether the shape produces it.
-import { OPEN_STRINGS } from './chordNotes.js'
+import { chordFitsIntervals, OPEN_STRINGS } from './chordNotes.js'
 
 const NUM_STRINGS = 6
 // Diagrams (and the 1-hex-char-per-string voicing code) stop here, so a shape
@@ -35,20 +35,6 @@ export function computeShapeFrets(rootString, offsets, targetRoot) {
   return offsets.map((o) => (o === null || o === undefined ? -1 : o + barreFret))
 }
 
-// Chord tones a voicing may leave out and still be the chord it claims.
-// Six strings can't carry a five- or six-note chord and stay playable, and
-// the guitar's answer has always been to drop the perfect fifth first (it
-// says nothing the root doesn't already say), plus the 11th in a 13th chord.
-// Triads and power chords have nothing to spare — every note is load-bearing.
-function omissibleIntervals(qualityIntervals) {
-  const simple = qualityIntervals.map((iv) => ((iv % 12) + 12) % 12)
-  if (new Set(simple).size < 4) return new Set()
-  const omissible = new Set()
-  if (simple.includes(7)) omissible.add(7)
-  if (qualityIntervals.includes(21) && qualityIntervals.includes(17)) omissible.add(5)
-  return omissible
-}
-
 // Compares a shape (moved to targetRoot) against a target chord (quality
 // interval set + optional bass).
 //
@@ -64,26 +50,12 @@ export function matchShape(shape, targetRoot, qualityIntervals, bass = null) {
   const shapeIntervals = computeShapeIntervals(rootString, offsets)
   const shapeIntervalSet = new Set(Object.values(shapeIntervals))
 
-  const targetSet = new Set(qualityIntervals.map((iv) => ((iv % 12) + 12) % 12))
-  const omissible = omissibleIntervals(qualityIntervals)
+  const spelling = chordFitsIntervals(shapeIntervalSet, qualityIntervals)
+
   const bassInterval = bass !== null && bass !== undefined ? ((bass - targetRoot) % 12 + 12) % 12 : null
-
-  let foreign = false
-  for (const iv of shapeIntervalSet) {
-    if (!targetSet.has(iv)) foreign = true
-  }
-
-  let missingRequired = false
-  let missingAny = false
-  for (const iv of targetSet) {
-    if (shapeIntervalSet.has(iv)) continue
-    missingAny = true
-    if (!omissible.has(iv)) missingRequired = true
-  }
-
   const bassMissing = bassInterval !== null && !shapeIntervalSet.has(bassInterval)
   const outOfRange = frets.some((f) => f > MAX_FRET)
 
-  const fits = !foreign && !missingRequired && !bassMissing && !outOfRange
-  return { frets, fits, exact: fits && !missingAny }
+  const fits = spelling.fits && !bassMissing && !outOfRange
+  return { frets, fits, exact: fits && spelling.exact }
 }
