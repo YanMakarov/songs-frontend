@@ -394,6 +394,11 @@ button { cursor: pointer; }
   bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
+  /* Одна ширина на все всплывающие плашки: 16px от краёв экрана, но не шире
+     колонки читаемой длины и не уже 200px — иначе короткие сообщения
+     съёживаются до огрызка, а рядом с ними длинные занимают весь экран. */
+  width: min(420px, calc(100vw - 32px));
+  min-width: 200px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-m);
@@ -404,6 +409,10 @@ button { cursor: pointer; }
   gap: 12px;
   color: var(--danger);
   z-index: 60;
+}
+.save-banner > span {
+  flex: 1;
+  min-width: 0;
 }
 .save-banner button {
   border: none;
@@ -707,9 +716,15 @@ button { cursor: pointer; }
   align-items: center;
   gap: 12px;
   z-index: 60;
-  max-width: min(420px, calc(100vw - 32px));
+  /* Одна ширина на все всплывающие плашки: 16px от краёв экрана, но не шире
+     колонки читаемой длины и не уже 200px — иначе короткие сообщения
+     съёживаются до огрызка, а рядом с ними длинные занимают весь экран. */
+  width: min(420px, calc(100vw - 32px));
+  min-width: 200px;
 }
 .undo-banner-text {
+  flex: 1;
+  min-width: 0;
   font-size: 14px;
   color: var(--text);
   white-space: nowrap;
@@ -745,9 +760,15 @@ button { cursor: pointer; }
   align-items: center;
   gap: 10px;
   z-index: 70;
-  max-width: min(420px, calc(100vw - 32px));
+  /* Одна ширина на все всплывающие плашки: 16px от краёв экрана, но не шире
+     колонки читаемой длины и не уже 200px — иначе короткие сообщения
+     съёживаются до огрызка, а рядом с ними длинные занимают весь экран. */
+  width: min(420px, calc(100vw - 32px));
+  min-width: 200px;
 }
 .pwa-banner-text {
+  flex: 1;
+  min-width: 0;
   font-size: 14px;
   color: var(--text);
   white-space: nowrap;
@@ -2879,7 +2900,8 @@ button { cursor: pointer; }
   transform: translateX(-50%);
   z-index: 60;
 
-  width: min(420px, calc(100vw - 24px));
+  width: min(420px, calc(100vw - 32px));
+  min-width: 200px;
   display: grid;
   grid-template-columns: auto 1fr;
   gap: 12px 14px;
