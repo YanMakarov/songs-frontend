@@ -135,7 +135,14 @@ export function loadLocalSongOverride(songId) {
 
 export function saveLocalSongOverride(songId, override) {
   if (!songId || !override) return;
-  localStorage.setItem(LOCAL_SONG_PREFIX + songId, JSON.stringify(override));
+  try {
+    localStorage.setItem(LOCAL_SONG_PREFIX + songId, JSON.stringify(override));
+  } catch {
+    // Storage full, or blocked (iOS in private mode throws on write). The
+    // override still lives in editor state, so the transposition holds for
+    // this session — it just will not survive a reload. Better than throwing
+    // out of the transpose handler and losing the transposition outright.
+  }
 }
 
 export function clearLocalSongOverride(songId) {

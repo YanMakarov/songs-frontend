@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react'
+import { useRef } from 'react'
 import SegmentedControl from './SegmentedControl.jsx'
 import { TIME_SIGNATURES } from '../lib/music.js'
 import Tooltip from './Tooltip.jsx'
@@ -11,26 +11,8 @@ const VIEW_OPTIONS = [
   { value: 'lyrics', label: 'Текст' },
 ]
 
-const ORIGINAL_KEY_LONG_PRESS_MS = 600
 const INSERT_TOP_LONG_PRESS_MS = 500
 const INSERT_TOP_DBL_TAP_MS = 320
-
-// Extract all chords from song lines for key detection
-function extractAllChords(song) {
-  const chords = []
-  if (Array.isArray(song.lines)) {
-    for (const line of song.lines) {
-      if (Array.isArray(line.chords)) {
-        for (const chordObj of line.chords) {
-          if (chordObj.chord && typeof chordObj.chord === 'string') {
-            chords.push(chordObj.chord)
-          }
-        }
-      }
-    }
-  }
-  return chords
-}
 
 export default function MetaBar({
   song,
@@ -39,68 +21,30 @@ export default function MetaBar({
   viewMode,
   onViewModeChange,
   isTransposed,
-  onRequestOriginalKeyReset,
+  originalKey,
+  onOpenKeyModal,
   onResetOriginalKey,
   onRequestInsertTop,
-  onDetectKey, // New prop for key detection callback
   showComments,
   hasComments,
   onToggleComments,
 }) {
-  const keyPressTimer = useRef(null)
   const insertPressTimer = useRef(null)
   const insertLongPressFired = useRef(false)
   const insertLastTapAtRef = useRef(0)
-  const hasOriginalMismatch = Boolean(song.originalKey && song.key && song.originalKey !== song.key)
-  const canRequestOriginalReset = Boolean(isTransposed) && typeof onRequestOriginalKeyReset === 'function'
-  const canResetOriginalKey = hasOriginalMismatch && typeof onResetOriginalKey === 'function'
+  // Only a transposition can put the song beside its original: the key field
+  // writes both labels at once. `originalKey` is passed in because `song` here
+  // is the transposed copy and no longer knows what the server holds.
+  const canResetOriginalKey =
+    Boolean(isTransposed) &&
+    Boolean(originalKey) &&
+    originalKey !== song.key &&
+    typeof onResetOriginalKey === 'function'
   const canInsertTop = typeof onRequestInsertTop === 'function'
-  
-  // Check if we should show detect key button
-  const [showDetectKey, setShowDetectKey] = useState(false)
   // Held locally for the same reason as a comment row: a title fed back from
   // the query cache is rewritten a microtask after the keystroke, which drops
   // the caret at the end of the name.
   const [title, setTitle] = useEditableText(song.title, (next) => onChange({ title: next }))
-  const hasChords = extractAllChords(song).length > 0
-  const hasNoKey = !song.key || song.key.trim() === ''
-  
-  useEffect(() => {
-    // Show detect key button when there are chords but no key set
-    setShowDetectKey(hasChords && hasNoKey)
-  }, [hasChords, hasNoKey])
-
-  function clearKeyPressTimer() {
-    if (keyPressTimer.current) {
-      clearTimeout(keyPressTimer.current)
-      keyPressTimer.current = null
-    }
-  }
-
-  function handleKeyPointerDown(e) {
-    if (!canRequestOriginalReset) return
-    if (e.pointerType === 'mouse' && e.button !== 0) return
-    e.stopPropagation()
-    clearKeyPressTimer()
-    keyPressTimer.current = setTimeout(() => {
-      keyPressTimer.current = null
-      onRequestOriginalKeyReset()
-    }, ORIGINAL_KEY_LONG_PRESS_MS)
-  }
-
-  function handleKeyPointerEnd(e) {
-    if (!canRequestOriginalReset) return
-    e.stopPropagation()
-    clearKeyPressTimer()
-  }
-
-  function handleKeyContextMenu(e) {
-    if (!canRequestOriginalReset) return
-    e.preventDefault()
-    e.stopPropagation()
-    clearKeyPressTimer()
-    onRequestOriginalKeyReset()
-  }
 
   function handleOriginalNoteClick() {
     if (!canResetOriginalKey) return
@@ -169,13 +113,6 @@ export default function MetaBar({
     }
   }
 
-  // Handle key detection
-  function handleDetectKey() {
-    if (typeof onDetectKey === 'function') {
-      onDetectKey()
-    }
-  }
-
   // Display key or placeholder
   const displayKey = song.key || '?'
 
@@ -198,35 +135,24 @@ export default function MetaBar({
       />
 
       <div className="meta-row">
-        <div
-          className="meta-field key"
-          onPointerDown={handleKeyPointerDown}
-          onPointerUp={handleKeyPointerEnd}
-          onPointerLeave={handleKeyPointerEnd}
-          onPointerCancel={handleKeyPointerEnd}
-          onContextMenu={handleKeyContextMenu}
-        >
-          <label>Тон.</label>
-          <input
-            value={displayKey}
-            placeholder="?"
-            onChange={(e) => {
-              const newValue = e.target.value
-              // If user types "?" or clears the field, store as empty string
-              onChange({ key: newValue === '?' ? '' : newValue })
-            }}
-          />
-        </div>
-
-        {showDetectKey && (
+        {/* A button, not a field: the key may never be blank, so it cannot be
+            edited in place — clearing it to type another one is exactly what
+            does not work here. The modal edits a draft instead. */}
+        {onOpenKeyModal ? (
           <button
             type="button"
-            className="detect-key-btn"
-            onClick={handleDetectKey}
-            aria-label="Определить тональность"
+            className="meta-field key key-button"
+            onClick={onOpenKeyModal}
+            aria-label={`Тональность: ${displayKey}. Изменить`}
           >
-            Определить тональность
+            <span className="meta-field-label">Тон.</span>
+            <span className="meta-field-value">{displayKey}</span>
           </button>
+        ) : (
+          <div className="meta-field key">
+            <span className="meta-field-label">Тон.</span>
+            <span className="meta-field-value">{displayKey}</span>
+          </div>
         )}
 
         <div className="meta-field">
@@ -260,14 +186,14 @@ export default function MetaBar({
         </div>
       </div>
 
-      {hasOriginalMismatch && (
+      {canResetOriginalKey && (
         <button
           type="button"
           className="original-key-note"
           onClick={handleOriginalNoteClick}
           aria-label="Вернуть оригинальную тональность"
         >
-          Оригинальная тональность · {song.originalKey}
+          Оригинальная тональность · {originalKey}
         </button>
       )}
 

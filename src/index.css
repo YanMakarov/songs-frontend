@@ -912,7 +912,7 @@ button { cursor: pointer; }
   border-radius: var(--radius-s);
   padding: 5px 10px;
 }
-.meta-field label {
+.meta-field label, .meta-field-label {
   font-size: 11px;
   font-weight: 600;
   color: var(--text-secondary);
@@ -931,6 +931,24 @@ button { cursor: pointer; }
 .meta-field.key input { width: 46px; }
 .meta-field.time select { width: 56px; }
 .meta-field input:focus, .meta-field select:focus { outline: none; }
+
+/* Тональность — единственное поле шапки, которое правится не на месте, а в
+   отдельном окне: пустой её оставить нельзя, поэтому стереть Am, чтобы
+   набрать C, прямо здесь не выходит. Выглядит так же, как соседние поля. */
+.meta-field.key-button {
+  border: none;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.meta-field.key-button:active { transform: scale(0.96); }
+.meta-field .meta-field-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  min-width: 46px;
+  text-align: center;
+}
 
 .transpose-group {
   display: flex;
@@ -2011,6 +2029,63 @@ button { cursor: pointer; }
 .confirm-modal-actions .danger-btn {
   background: var(--danger);
   color: #fff;
+}
+.confirm-modal-actions button:disabled {
+  opacity: 0.4;
+}
+
+/* Окно тональности --------------------------------------------------------*/
+.key-modal-input {
+  width: 100%;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 10px 12px;
+  text-align: center;
+}
+.key-modal-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.key-modal-input::placeholder {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-tertiary);
+  letter-spacing: 0;
+}
+.key-modal-btn {
+  border: 1px solid var(--border);
+  background: transparent;
+  border-radius: var(--radius-s);
+  color: var(--text);
+  font-family: var(--font-ui);
+  font-size: 14px;
+  font-weight: 600;
+  padding: 9px 14px;
+}
+.key-modal-btn:active { transform: scale(0.98); }
+.key-modal-btn:disabled {
+  opacity: 0.4;
+  color: var(--text-secondary);
+}
+.key-modal-note {
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--text-secondary);
+}
+/* Возврат к оригиналу — про транспонирование, а не про подпись, поэтому
+   отделён от поля чертой. */
+.key-modal-original {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
 }
 
 /* Page break line (editor) ---------------------------------------------- */

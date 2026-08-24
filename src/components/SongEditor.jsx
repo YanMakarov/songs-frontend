@@ -5,6 +5,7 @@ import ChordPicker from './ChordPicker.jsx'
 import AddLineMenu from './AddLineMenu.jsx'
 import ChordContextMenu from './ChordContextMenu.jsx'
 import ChordFingeringModal from './ChordFingeringModal.jsx'
+import KeyModal from './KeyModal.jsx'
 import { IconChevronLeft, IconPlus, IconSettings, IconUpload, IconPrinter, IconMusic } from './Icons.jsx'
 import ThemeMenu from './ThemeMenu.jsx'
 import Tooltip from './Tooltip.jsx'
@@ -63,6 +64,7 @@ export default function SongEditor({
   const [importing, setImporting] = useState(false)
   const [focusedLineId, setFocusedLineId] = useState(null)
   const [confirmOriginalKey, setConfirmOriginalKey] = useState(false)
+  const [keyModalOpen, setKeyModalOpen] = useState(false)
   const [localOverride, setLocalOverride] = useState(null)
   const [printPreview, setPrintPreview] = useState(false)
   // Which half of the song screen is showing. Always starts on the harmony:
@@ -102,8 +104,20 @@ export default function SongEditor({
     () => (localOverride ? { ...song, key: localOverride.key, lines: localOverride.lines } : song),
     [song, localOverride],
   )
-  const originalKey = song.originalKey || song.key || 'C'
+  // Older songs — anything imported, or edited before the field existed —
+  // carry no originalKey at all. Falling back to the server's key keeps the
+  // way back from a transposition visible for them too.
+  const originalKey = song.originalKey || song.key || ''
   const isTransposed = Boolean(localOverride)
+  // Every chord symbol in the song, in reading order: what key detection has
+  // to work with.
+  const songChordSymbols = useMemo(
+    () =>
+      (effectiveSong.lines || []).flatMap((line) =>
+        (line.chords || []).map((c) => c.chord).filter((chord) => typeof chord === 'string' && chord.trim()),
+      ),
+    [effectiveSong.lines],
+  )
   songRef.current = effectiveSong
   onChangeRef.current = onChange
   charWidthRef.current = charWidth
@@ -674,7 +688,20 @@ export default function SongEditor({
 
   function handleRequestOriginalKeyReset() {
     if (!isTransposed) return
+    setKeyModalOpen(false)
     setConfirmOriginalKey(true)
+  }
+
+  // A key edit is a relabelling, not a transposition: the chords stay put.
+  // While a local transposition is active the label belongs to the override
+  // and never reaches the server (commitPatch routes it); otherwise it also
+  // becomes the song's original key, so the two never drift apart.
+  function handleSaveKey(nextKey) {
+    if (isTransposed) {
+      commitPatch({ key: nextKey })
+      return
+    }
+    commitPatch({ key: nextKey, originalKey: nextKey })
   }
 
   function handleConfirmOriginalKeyReset() {
@@ -1045,10 +1072,11 @@ export default function SongEditor({
           viewMode={viewMode}
           onViewModeChange={onViewModeChange}
           isTransposed={isTransposed}
-          // Both of these write to the server. They hang off container-level
-          // gestures (long press on the key field, double tap on the meta bar),
-          // which CSS cannot single out without also disabling what sits inside.
-          onRequestOriginalKeyReset={locked ? undefined : handleRequestOriginalKeyReset}
+          originalKey={originalKey}
+          onOpenKeyModal={locked ? undefined : () => setKeyModalOpen(true)}
+          // Writes to the server, and hangs off a container-level gesture
+          // (double tap on the meta bar) that CSS cannot single out without
+          // also disabling what sits inside.
           onResetOriginalKey={handleResetKeyToOriginal}
           onRequestInsertTop={readOnlyChords || locked ? undefined : handleRequestInsertTop}
           showComments={showComments}
@@ -1202,6 +1230,17 @@ export default function SongEditor({
         />
       )}
 
+      {keyModalOpen && (
+        <KeyModal
+          keyLabel={effectiveSong.key}
+          chords={songChordSymbols}
+          originalKey={originalKey}
+          onSetAsOriginal={isTransposed && !locked ? handleRequestOriginalKeyReset : undefined}
+          onSave={handleSaveKey}
+          onClose={() => setKeyModalOpen(false)}
+        />
+      )}
+
       {confirmOriginalKey && (
         <div
           className="confirm-modal-backdrop"
@@ -1217,7 +1256,7 @@ export default function SongEditor({
               Сделать текущую тональность оригинальной?
             </div>
             <div className="confirm-modal-text">
-              «{effectiveSong.key || '—'}» заменит «{originalKey}» как оригинальная тональность песни.
+              «{effectiveSong.key || '—'}» заменит «{originalKey || '—'}» как оригинальная тональность песни.
             </div>
             <div className="confirm-modal-actions">
               <button type="button" className="ghost-btn" onClick={handleDismissOriginalKeyDialog}>
