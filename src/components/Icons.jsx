@@ -134,6 +134,20 @@ export function IconMusic(props) {
   )
 }
 
+export function IconComment(props) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" {...props}>
+      <path
+        d="M4 5.5h16v11H9.5L5 20.5v-4H4z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path d="M8 10h8M8 13h5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 export function IconGrip(props) {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden {...props}>

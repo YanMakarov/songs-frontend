@@ -16,6 +16,7 @@
   --section-key-size: calc(11.5px * var(--song-scale));
   --chords-line-size: calc(14px * var(--song-scale));
   --instrumental-hint-size: calc(13px * var(--song-scale));
+  --comment-font-size: calc(13.5px * var(--song-scale));
 }
 
 [data-theme='light'] {
@@ -312,6 +313,21 @@ button { cursor: pointer; }
 }
 .song-card.drop-before::before { top: -6px; }
 .song-card.drop-after::after { bottom: -6px; }
+.song-card-index {
+  flex-shrink: 0;
+  min-width: 18px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+  text-align: right;
+}
+/* Без ручки перетаскивания слева номер прижимается к самому краю карточки —
+   возвращаем ему воздух, который раньше давала ручка. */
+.is-locked .song-card-index {
+  margin-left: 2px;
+}
 .song-card-main { min-width: 0; flex: 1; }
 .song-card-title {
   font-size: 16px;
@@ -946,7 +962,26 @@ button { cursor: pointer; }
   text-align: center;
 }
 
-.view-toggle-row { display: flex; justify-content: flex-start; }
+.view-toggle-row { display: flex; justify-content: flex-start; align-items: center; gap: 10px; }
+/* Off by look as well as by state: a muted outline until it is on. */
+.comments-toggle {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.comments-toggle.is-on {
+  background: var(--chip-bg);
+  border-color: transparent;
+  color: var(--chip-text);
+}
+.comments-toggle:active { transform: scale(0.96); }
 .text-scale-row {
   display: flex;
   align-items: center;
@@ -1319,6 +1354,46 @@ button { cursor: pointer; }
   /* border-radius: 6px; */
 }
 .lyrics-input:focus { outline: none; box-shadow: 0 0 0 2px var(--accent) inset; }
+
+/* Comment rows -------------------------------------------------------------
+   Quieter than the lyrics on purpose — an aside, not a line to sing. Quieter
+   still stops at --text-secondary, which keeps ~4.9:1 against the page in
+   light and ~8.9:1 in dark: this gets read on a stage, sometimes in daylight,
+   and a note nobody can make out is the same as no note. The bar on the left
+   carries the "this is not the song" signal that the low contrast alone
+   would have to shout to convey. */
+.comment-row {
+  margin-top: 4px;
+  margin-bottom: 8px;
+}
+.comment-content {
+  border-left: 2px solid var(--border);
+  padding-left: 10px;
+}
+.comment-input {
+  display: block;
+  width: 100%;
+  border: none;
+  background: transparent;
+  resize: none;
+  overflow: hidden;
+  font-family: var(--font-ui);
+  font-style: italic;
+  font-size: var(--comment-font-size);
+  line-height: 1.45;
+  color: var(--text-secondary);
+  padding: 2px 0;
+}
+.comment-input::placeholder { color: var(--text-tertiary); font-style: italic; }
+.comment-input:focus {
+  outline: none;
+  color: var(--text);
+  background: var(--surface-2);
+  border-radius: 6px;
+}
+/* Read-only under the lock: no caret, no keyboard, still selectable. */
+.comment-input[readonly] { cursor: default; }
+.comment-input[readonly]:focus { background: transparent; color: var(--text-secondary); }
 
 /* Section marker rows (Verse / Chorus / Bridge…) ---------------------------*/
 .section-row {
@@ -2104,6 +2179,26 @@ button { cursor: pointer; }
   font-family: var(--font-mono);
   color: #555;
 }
+.pdf-comment {
+  font-family: var(--font-ui);
+  font-style: italic;
+  font-size: calc(var(--pdf-lyrics-size, 15px) * 0.92);
+  line-height: 1.45;
+  /* On paper the screen's muted grey disappears; this is as light as print
+     tolerates, and it is set explicitly rather than inherited. */
+  color: #4a4a4a;
+  border-left: 2px solid #c8c8c8;
+  padding-left: 8px;
+  white-space: pre-wrap;
+  margin: 4px 0;
+}
+/* A long note is allowed to split across pages — keeping it whole would push
+   a half-page comment onto a sheet of its own. */
+.pdf-item:has(.pdf-comment) {
+  break-inside: auto;
+  page-break-inside: auto;
+}
+
 .pdf-chords-only {
   font-family: var(--font-mono);
   font-size: var(--pdf-chord-size, 13px);
@@ -2563,6 +2658,9 @@ button { cursor: pointer; }
   .canvas,
   .fab,
   .no-print,
+  /* Служебная подсказка про замок объясняет экранный режим и на бумаге
+     смысла не имеет. */
+  .lock-notice,
   .print-preview-hint { display: none !important; }
   .print-preview {
     position: static;

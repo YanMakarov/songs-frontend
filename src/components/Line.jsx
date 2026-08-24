@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { IconClose, IconMusic, IconPageBreak, IconGrip } from './Icons.jsx'
 import Tooltip from './Tooltip.jsx'
 import { parseChord, noteToSemitone } from '../lib/music.js'
@@ -81,6 +81,7 @@ export default function Line({
 })  {
   const isSection = line.type === 'section'
   const isPageBreak = line.type === 'pagebreak'
+  const isComment = line.type === 'comment'
   const fieldValue = isSection ? line.label : line.lyrics
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(fieldValue)
@@ -94,6 +95,7 @@ export default function Line({
   const lastDesktopClickAtRef = useRef(0)
   const lastPointerTypeRef = useRef('mouse')
   const inputRef = useRef(null)
+  const commentRef = useRef(null)
   const keyInputRef = useRef(null)
   const repeatInputRef = useRef(null)
   const chordsStripRef = useRef(null)
@@ -125,6 +127,48 @@ export default function Line({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingRepeat])
+
+  // A comment is prose of unknown length, so the field grows with it: a
+  // fixed-height box would either waste a third of the screen on a one-line
+  // note or hide the end of a longer one behind an inner scrollbar.
+  //
+  // Measuring once on mount is not enough. How many lines the text takes
+  // depends on the width it is laid out in, and that width can still be wrong
+  // at that moment — the stylesheet not applied yet, the font not swapped in,
+  // the window later resized. A one-shot measurement taken then sticks: the
+  // first version of this box opened 1570px tall, because it was measured
+  // while the textarea was still at its unstyled default width.
+  useLayoutEffect(() => {
+    const el = commentRef.current
+    if (!el) return
+    let alive = true
+    const fit = () => {
+      if (!alive) return
+      el.style.height = 'auto'
+      el.style.height = `${el.scrollHeight}px`
+    }
+    fit()
+    // Only a change of *width* can change the number of lines; reacting to
+    // height as well would just re-measure the height this callback set. The
+    // width comes from the entry rather than from the element: inside the
+    // callback the element may not have been laid out at the new size yet, and
+    // reading a stale `clientWidth` there silently skips the refit.
+    let lastWidth = null
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect?.width
+      if (width == null || width === lastWidth) return
+      lastWidth = width
+      fit()
+    })
+    observer.observe(el)
+    if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
+      document.fonts.ready.then(fit)
+    }
+    return () => {
+      alive = false
+      observer.disconnect()
+    }
+  }, [line.lyrics, isComment, mode])
 
   function commitRepeat() {
     const trimmed = repeatDraft.trim()
@@ -624,6 +668,54 @@ export default function Line({
               )}
         </div>
         {!readOnly && renderDeleteButton('Удалить раздел')}
+      </div>
+    )
+  }
+
+  // A performer's note. Rendered in every view mode — hiding it is the job of
+  // the one global switch, not of the mode — and always as a live textarea
+  // rather than the click-to-edit pattern the other rows use: a note is
+  // written in one go, and a tap that has to be aimed at a two-word label is
+  // the wrong shape for that. Muted on purpose: it must read as annotation
+  // next to the song, never compete with the lyrics.
+  if (isComment) {
+    const readOnly = locked || mode === 'chordsOnly'
+    return (
+      <div
+        className={'line-row comment-row' + (isFocused ? ' is-focused' : '')}
+        data-line-id={line.id}
+        data-line-type="comment"
+        data-line-mode={mode}
+        onClickCapture={readOnly ? undefined : handleRowClickCapture}
+        onPointerDown={readOnly ? undefined : handleRowPointerDown}
+        onPointerUp={readOnly ? undefined : handleRowPointerUp}
+        onPointerLeave={readOnly ? undefined : cancelRowPress}
+        onPointerCancel={readOnly ? undefined : cancelRowPress}
+        onContextMenu={readOnly ? undefined : handleRowContextMenu}
+      >
+        <div className="line-content comment-content">
+          <textarea
+            ref={commentRef}
+            className="comment-input"
+            rows={1}
+            value={line.lyrics || ''}
+            // Locked means nothing is written. `readOnly` and not `disabled`
+            // so the text can still be selected and copied, and so tapping it
+            // does not raise the on-screen keyboard over the song.
+            readOnly={readOnly}
+            placeholder={readOnly ? '' : 'Комментарий…'}
+            spellCheck={false}
+            // Every other field commits on Enter; here Enter is a newline,
+            // which is the whole point of the field. Escape gives up focus,
+            // and the value is already committed on each keystroke — the
+            // write queue debounces it into one PATCH.
+            onChange={(e) => onUpdateLine({ lyrics: e.target.value })}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') e.currentTarget.blur()
+            }}
+          />
+        </div>
+        {!readOnly && renderDeleteButton('Удалить комментарий')}
       </div>
     )
   }

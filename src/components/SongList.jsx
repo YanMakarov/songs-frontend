@@ -343,7 +343,7 @@ export default function SongList({
         </div>
       ) : (
         <div className="song-list" ref={listRef}>
-          {songs.map((song) => {
+          {songs.map((song, index) => {
             const isDragging = draggingId === song.id
             const isDropBefore = dropIndicator && dropIndicator.id === song.id && dropIndicator.position === 'before'
             const isDropAfter = dropIndicator && dropIndicator.id === song.id && dropIndicator.position === 'after'
@@ -380,6 +380,9 @@ export default function SongList({
                 >
                   <IconGrip />
                 </button>
+                {/* Порядковый номер: список чаще всего читают, чтобы прикинуть
+                    объём сетлиста, — номер отвечает на это сразу, без счёта. */}
+                <div className="song-card-index" aria-hidden="true">{index + 1}</div>
                 <div className="song-card-main">
                   <div className="song-card-title">
                     {song.title || 'Без названия'}

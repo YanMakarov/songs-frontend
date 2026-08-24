@@ -13,7 +13,7 @@ const PDF_SECTION_SIZE = 13
 // sheet exactly as it will appear. Hovering any line reveals controls to
 // insert an empty line below it (or remove an existing empty line) to tune
 // spacing before printing.
-export default function PrintPreview({ song, viewMode, appliedTextScale, onChange, onClose, onDownload }) {
+export default function PrintPreview({ song, viewMode, showComments = true, appliedTextScale, onChange, onClose, onDownload }) {
   const measureRef = useRef(null)
   const scrollRef = useRef(null)
   const sheetRef = useRef(null)
@@ -22,7 +22,13 @@ export default function PrintPreview({ song, viewMode, appliedTextScale, onChang
   const [sheetHeight, setSheetHeight] = useState(0)
   const scale = Number.isFinite(appliedTextScale) ? appliedTextScale : 1
 
-  const items = useMemo(() => buildPrintableItems(song, viewMode), [song, viewMode])
+  // The printed sheet follows the same switch as the screen: what you see is
+  // what comes out. Notes meant for one person should not appear on the
+  // copies handed to everyone else unless they are visible in the app too.
+  const items = useMemo(
+    () => buildPrintableItems(song, viewMode, showComments),
+    [song, viewMode, showComments],
+  )
 
   // A4 sheet width in CSS px (1mm = 96/25.4 px). Used to fit the preview to
   // narrow viewports without distorting the print layout.
@@ -196,6 +202,11 @@ function PrintLineContent({ item, charWidth, onAddAfter, onDelete }) {
 }
 
 function PrintLineBody({ line, kind, cells, charWidth }) {
+  // Printed as its own block, and never through the lyrics branch below: a
+  // comment has no chord row, and its text carries real newlines.
+  if (kind === 'comment') {
+    return <div className="pdf-comment">{line.lyrics || ''}</div>
+  }
   if (kind === 'section') {
     return (
       <div className="pdf-section">
@@ -266,11 +277,12 @@ function PrintLineBody({ line, kind, cells, charWidth }) {
   )
 }
 
-function buildPrintableItems(song, viewMode) {
-  if (viewMode === 'chords') return buildChordItems(song)
+function buildPrintableItems(song, viewMode, showComments) {
+  if (viewMode === 'chords') return buildChordItems(song, showComments)
   const items = []
   song.lines.forEach((line) => {
     if (line.type === 'pagebreak') return
+    if (line.type === 'comment' && !showComments) return
     if (viewMode === 'lyrics') {
       if (line.type === 'chords') return
     }
@@ -283,9 +295,12 @@ function buildPrintableItems(song, viewMode) {
 // collapse into one cell with ×N, and consecutive cells print as one
 // horizontal run. The run is a single item so it stays on one page and keeps
 // one set of hover controls, anchored to its last line.
-function buildChordItems(song) {
+function buildChordItems(song, showComments) {
   const relevant = song.lines.filter(
-    (l) => l.type === 'section' || (l.chords && l.chords.length > 0),
+    (l) =>
+      l.type === 'section' ||
+      (l.type === 'comment' && showComments) ||
+      (l.type !== 'comment' && l.chords && l.chords.length > 0),
   )
   const items = []
   let cells = []
@@ -298,9 +313,9 @@ function buildChordItems(song) {
   for (const group of collapseRepeats(relevant)) {
     const line = relevant.find((l) => l.id === group.key)
     if (!line) continue
-    if (line.type === 'section') {
+    if (line.type === 'section' || line.type === 'comment') {
       flush()
-      items.push({ line, kind: 'section' })
+      items.push({ line, kind: nodeKind(line) })
       continue
     }
     cells.push({
@@ -316,6 +331,7 @@ function buildChordItems(song) {
 
 function nodeKind(line) {
   if (line.type === 'section') return 'section'
+  if (line.type === 'comment') return 'comment'
   if (line.type === 'chords') return 'instrumental'
   return 'line'
 }

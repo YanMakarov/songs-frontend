@@ -9,6 +9,7 @@ const VIEW_MODE_KEY = "chords_app_view_mode_v1";
 const TEXT_SCALE_KEY = "chords_app_text_scale_v1";
 const COLOR_SCHEME_KEY = "chords_app_color_scheme_v1";
 const CHORD_STYLE_KEY = "chords_app_chord_style_v1";
+const SHOW_COMMENTS_KEY = "chords_app_show_comments_v1";
 const LOCAL_SONG_PREFIX = "chords_app_local_song_";
 const CUSTOM_SHAPES_KEY = "chords_app_custom_shapes_v1";
 
@@ -28,6 +29,14 @@ export function sectionLine(label = "", key = null) {
 // chords are ordered sequentially rather than tied to character position.
 export function instrumentalLine() {
   return { id: uid(), type: "chords", chords: [] };
+}
+
+// A performer's note left inside the song ("попробовать здесь другой
+// аккорд"). The text lives in `lyrics` like every other textual line, so the
+// places that fall back to it — the conflict diff, an older client — still
+// show the words instead of an empty row.
+export function commentLine(text = "") {
+  return { id: uid(), type: "comment", lyrics: text, chords: [] };
 }
 
 // Explicit page break — forces the following content onto a new PDF page.
@@ -51,6 +60,19 @@ export function loadViewMode() {
 
 export function saveViewMode(mode) {
   localStorage.setItem(VIEW_MODE_KEY, mode);
+}
+
+// Whether comments are shown. Deliberately one global switch rather than a
+// per-song field: wanting to see the notes is a mood ("сейчас я разбираю
+// гармонию"), not a property of one song. Local, like theme and view mode —
+// which also means it works while the app is locked, where a song field
+// could not be touched at all.
+export function loadShowComments() {
+  return localStorage.getItem(SHOW_COMMENTS_KEY) !== "0";
+}
+
+export function saveShowComments(value) {
+  localStorage.setItem(SHOW_COMMENTS_KEY, value ? "1" : "0");
 }
 
 export function loadTextScale() {

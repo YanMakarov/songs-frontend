@@ -41,6 +41,9 @@ export default function MetaBar({
   onResetOriginalKey,
   onRequestInsertTop,
   onDetectKey, // New prop for key detection callback
+  showComments,
+  hasComments,
+  onToggleComments,
 }) {
   const keyPressTimer = useRef(null)
   const insertPressTimer = useRef(null)
@@ -264,6 +267,20 @@ export default function MetaBar({
 
       <div className="view-toggle-row">
         <SegmentedControl name="view-mode" options={VIEW_OPTIONS} value={viewMode} onChange={onViewModeChange} />
+        {/* Shown only for songs that actually carry notes: a switch for
+            something that isn't there is noise. The preference behind it is
+            global, so flipping it here decides it for every song. */}
+        {hasComments && typeof onToggleComments === 'function' && (
+          <button
+            type="button"
+            className={'comments-toggle' + (showComments ? ' is-on' : '')}
+            aria-pressed={showComments}
+            onClick={() => onToggleComments(!showComments)}
+            title={showComments ? 'Скрыть комментарии во всех песнях' : 'Показать комментарии во всех песнях'}
+          >
+            Комментарии
+          </button>
+        )}
       </div>
     </div>
   )

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { IconTextLine, IconSection, IconMusic } from './Icons.jsx'
+import { IconTextLine, IconSection, IconMusic, IconComment } from './Icons.jsx'
 
 // Small popover shown whenever the user adds a new line: choose between a
 // regular text+chords line, or a structural section label (Verse, Chorus...).
@@ -45,6 +45,13 @@ export default function AddLineMenu({ anchor, contextLabel, onChoose, onClose })
           <span>
             Проигрыш
             <small>Только аккорды, без текста</small>
+          </span>
+        </button>
+        <button className="add-line-menu-item" onClick={() => onChoose('comment')}>
+          <IconComment />
+          <span>
+            Комментарий
+            <small>Заметка для себя, можно скрыть</small>
           </span>
         </button>
       </div>

@@ -11,6 +11,7 @@ function lyricsOf(song) {
     if (line.type === 'section') return `## ${line.label || ''}`.trim()
     if (line.type === 'pagebreak') return '---'
     if (line.type === 'chords') return line.chords.map((c) => c.chord).join(' ')
+    if (line.type === 'comment') return `> ${line.lyrics || ''}`.trimEnd()
     return line.lyrics || ''
   })
 }

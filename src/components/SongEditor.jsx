@@ -10,7 +10,7 @@ import ThemeMenu from './ThemeMenu.jsx'
 import Tooltip from './Tooltip.jsx'
 import { transposeChord, transposeKey, parseKey, keySemitoneDelta } from '../lib/music.js'
 import { decodeVoicing, encodeVoicing } from '../lib/voicing.js'
-import { emptyLine, sectionLine, instrumentalLine, pagebreakLine, uid, loadLocalSongOverride, saveLocalSongOverride, clearLocalSongOverride } from '../lib/storage.js'
+import { emptyLine, sectionLine, instrumentalLine, pagebreakLine, commentLine, uid, loadLocalSongOverride, saveLocalSongOverride, clearLocalSongOverride, loadShowComments, saveShowComments } from '../lib/storage.js'
 import { collapseRepeats } from '../lib/repeats.js'
 import PrintPreview from './PrintPreview.jsx'
 import { ApiError, importPdf } from '../lib/api.js'
@@ -61,6 +61,10 @@ export default function SongEditor({
   const [confirmOriginalKey, setConfirmOriginalKey] = useState(false)
   const [localOverride, setLocalOverride] = useState(null)
   const [printPreview, setPrintPreview] = useState(false)
+  // Read on mount rather than held in App: the switch is global, and every
+  // song screen mounts this component, so localStorage is the single source
+  // of truth without another prop having to be threaded through.
+  const [showComments, setShowComments] = useState(loadShowComments)
   const locked = useLock()
   const [pendingLineDelete, setPendingLineDelete] = useState(null)
   const measureRef = useRef(null)
@@ -107,6 +111,7 @@ export default function SongEditor({
       '--section-key-size': px(11.5),
       '--chords-line-size': px(16),
       '--instrumental-hint-size': px(13),
+      '--comment-font-size': px(13.5),
     }
   }, [appliedTextScale])
 
@@ -270,6 +275,32 @@ export default function SongEditor({
     }, 250)
   }
 
+  // Turn a pointer's vertical position into an index into `song.lines`.
+  //
+  // Going through the row's own id rather than its position among the rows is
+  // what makes this survive lines that are on screen but not in the DOM —
+  // instrumental lines in the lyrics view, comments while the switch is off.
+  // Counting rows would place the drop N positions early, N being however
+  // many hidden lines sit above it.
+  function modelIndexFromPointer(clientY) {
+    const song = songRef.current
+    if (!canvasRef.current || !song) return 0
+    const rows = Array.from(canvasRef.current.querySelectorAll('.line-row'))
+    const indexOfRow = (row) => {
+      const id = row.getAttribute('data-line-id')
+      const index = song.lines.findIndex((l) => l.id === id)
+      return index === -1 ? null : index
+    }
+    for (const row of rows) {
+      const rect = row.getBoundingClientRect()
+      const index = indexOfRow(row)
+      if (index == null) continue
+      if (clientY < rect.top) return index
+      if (clientY < rect.bottom) return clientY < rect.top + rect.height / 2 ? index : index + 1
+    }
+    return song.lines.length
+  }
+
   function resolveDrop(clientX, clientY) {
     const info = dragRef.current
     if (!info) return
@@ -279,9 +310,14 @@ export default function SongEditor({
     const target = document.elementFromPoint(clientX, clientY)
     const lineRow = target && target.closest ? target.closest('.line-row') : null
     const targetLineType = lineRow && lineRow.getAttribute('data-line-type')
-    const isSectionRow = targetLineType === 'section'
+    // Rows that hold no chords. A comment is the important one: it would have
+    // accepted the chord into `line.chords`, where nothing renders it and the
+    // serialiser drops it — the chord would vanish on the next read.
+    // (A page break had the same hole and is closed here too.)
+    const isChordlessRow =
+      targetLineType === 'section' || targetLineType === 'comment' || targetLineType === 'pagebreak'
 
-    if (lineRow && !isSectionRow) {
+    if (lineRow && !isChordlessRow) {
       const targetLineId = lineRow.getAttribute('data-line-id')
       const lineModeAttr = lineRow.getAttribute('data-line-mode')
       const targetLine = song.lines.find((l) => l.id === targetLineId)
@@ -319,15 +355,7 @@ export default function SongEditor({
       commitPatchRef.current({ lines })
     } else if (canvasRef.current) {
       // Dropped on empty canvas space -> create a new line at that vertical position.
-      const rows = Array.from(canvasRef.current.querySelectorAll('.line-row'))
-      let insertIndex = rows.length
-      for (let i = 0; i < rows.length; i++) {
-        const r = rows[i].getBoundingClientRect()
-        if (clientY < r.top) {
-          insertIndex = i
-          break
-        }
-      }
+      const insertIndex = modelIndexFromPointer(clientY)
       const baseLines = copy
         ? song.lines
         : song.lines.map((l) =>
@@ -358,19 +386,7 @@ export default function SongEditor({
     const { line, copy = false } = info
     const song = songRef.current
     if (!canvasRef.current) return
-    const rows = Array.from(canvasRef.current.querySelectorAll('.line-row'))
-    let insertIndex = song.lines.length
-    for (let i = 0; i < rows.length; i++) {
-      const r = rows[i].getBoundingClientRect()
-      if (clientY < r.top) {
-        insertIndex = i
-        break
-      }
-      if (clientY < r.bottom) {
-        insertIndex = clientY < r.top + r.height / 2 ? i : i + 1
-        break
-      }
-    }
+    const insertIndex = modelIndexFromPointer(clientY)
     let lines
     if (copy) {
       const clone = cloneLineWithNewIds(line)
@@ -488,6 +504,7 @@ export default function SongEditor({
   function lineSummary(line) {
     if (!line) return ''
     if (line.type === 'section') return line.label || 'Раздел'
+    if (line.type === 'comment') return line.lyrics || 'Комментарий'
     if (line.type === 'chords') {
       const seq = [...line.chords].sort((a, b) => a.position - b.position).map((c) => c.chord)
       return seq.length ? seq.join(' ') : 'Проигрыш'
@@ -506,6 +523,12 @@ export default function SongEditor({
     return `Добавить после «${truncate(lineSummary(effectiveSong.lines[insertAt - 1]), 22)}»`
   }
 
+  function toggleComments(next) {
+    const value = Boolean(next)
+    setShowComments(value)
+    saveShowComments(value)
+  }
+
   function commitAddMenu(type) {
     if (!addMenu) return
     const newLine =
@@ -515,7 +538,12 @@ export default function SongEditor({
           ? instrumentalLine()
           : type === 'pagebreak'
             ? pagebreakLine()
-            : emptyLine()
+            : type === 'comment'
+              ? commentLine()
+              : emptyLine()
+    // Adding a comment while comments are hidden would look like nothing
+    // happened. Asking to write one is asking to see them.
+    if (type === 'comment' && !showComments) toggleComments(true)
     addLineAt(addMenu.insertAt, newLine)
     setFocusedLineId(newLine.id)
     setAddMenu(null)
@@ -773,9 +801,21 @@ export default function SongEditor({
     }
   }
 
+  // Everything downstream — the three view modes, the PDF, the drag targets —
+  // works off this list, so hiding comments is one filter in one place rather
+  // than a condition repeated in every renderer.
+  const visibleLines = showComments
+    ? effectiveSong.lines
+    : effectiveSong.lines.filter((l) => l.type !== 'comment')
+  const hasComments = effectiveSong.lines.some((l) => l.type === 'comment')
+
   const groups =
     viewMode === 'chords'
-      ? collapseRepeats(effectiveSong.lines.filter((l) => l.type === 'section' || l.type === 'pagebreak' || l.chords.length > 0))
+      ? collapseRepeats(
+          visibleLines.filter(
+            (l) => l.type === 'section' || l.type === 'pagebreak' || l.type === 'comment' || l.chords.length > 0,
+          ),
+        )
       : null
   // Chords view layout: consecutive chord-carrying lines flow horizontally
   // inside one container, so a song whose chords change rarely reads as a few
@@ -794,7 +834,9 @@ export default function SongEditor({
     for (const g of groups) {
       const line = effectiveSong.lines.find((l) => l.id === g.key)
       if (!line) continue
-      if (line.type === 'section' || line.type === 'pagebreak') {
+      // A comment carries no chords, so it cannot be a cell in the flow; like
+      // a section it takes the full width and breaks the run.
+      if (line.type === 'section' || line.type === 'pagebreak' || line.type === 'comment') {
         flush()
         nodes.push(<Line key={g.key} line={line} mode="chordsOnly" />)
         continue
@@ -835,7 +877,7 @@ export default function SongEditor({
     })
   }
 
-  const lineElements = effectiveSong.lines.map((line) => (
+  const lineElements = visibleLines.map((line) => (
     <Line
       key={line.id}
       line={line}
@@ -859,7 +901,12 @@ export default function SongEditor({
     />
   ))
   if (addMenu) {
-    const idx = Math.max(0, Math.min(addMenu.insertAt, lineElements.length))
+    // `insertAt` indexes the song; the indicator sits among the rows actually
+    // rendered, which is fewer of them while comments are hidden.
+    const visibleBefore = effectiveSong.lines
+      .slice(0, addMenu.insertAt)
+      .filter((l) => showComments || l.type !== 'comment').length
+    const idx = Math.max(0, Math.min(visibleBefore, lineElements.length))
     lineElements.splice(idx, 0, <div key="insert-indicator" className="insert-indicator" />)
   }
 
@@ -917,6 +964,9 @@ export default function SongEditor({
         onRequestOriginalKeyReset={locked ? undefined : handleRequestOriginalKeyReset}
         onResetOriginalKey={handleResetKeyToOriginal}
         onRequestInsertTop={readOnlyChords || locked ? undefined : handleRequestInsertTop}
+        showComments={showComments}
+        hasComments={hasComments}
+        onToggleComments={toggleComments}
       />
 
       <span
@@ -1088,6 +1138,7 @@ export default function SongEditor({
         <PrintPreview
           song={effectiveSong}
           viewMode={viewMode}
+          showComments={showComments}
           appliedTextScale={appliedTextScale}
           onChange={commitPatch}
           onClose={() => setPrintPreview(false)}
