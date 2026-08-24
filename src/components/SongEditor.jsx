@@ -67,6 +67,8 @@ export default function SongEditor({
   const [showComments, setShowComments] = useState(loadShowComments)
   const locked = useLock()
   const [pendingLineDelete, setPendingLineDelete] = useState(null)
+  const [lostEdit, setLostEdit] = useState(null)
+  const lostEditTimer = useRef(null)
   const measureRef = useRef(null)
   const canvasRef = useRef(null)
   const fileInputRef = useRef(null)
@@ -261,6 +263,10 @@ export default function SongEditor({
         clearTimeout(pendingLineDeleteRef.current.timer)
         pendingLineDeleteRef.current = null
       }
+      if (lostEditTimer.current) {
+        clearTimeout(lostEditTimer.current)
+        lostEditTimer.current = null
+      }
     }
   }, [])
 
@@ -438,14 +444,45 @@ export default function SongEditor({
   }
   commitPatchRef.current = commitPatch
 
+  // Every popover and every row handler finds its target by id, and that
+  // lookup is meant to succeed: lineIdentity.js keeps ids stable across a
+  // refetch precisely so an id captured when a menu opened still resolves when
+  // it is used. Should one ever miss anyway, the edit has nowhere to land —
+  // and the one outcome to rule out is losing it without a word, which is how
+  // this whole class of bug reached the user in the first place.
+  function reportLostEdit(what) {
+    console.warn(`Не найдена строка или аккорд для «${what}» — правка не применена`)
+    setLostEdit(what)
+    if (lostEditTimer.current) clearTimeout(lostEditTimer.current)
+    lostEditTimer.current = setTimeout(() => {
+      lostEditTimer.current = null
+      setLostEdit(null)
+    }, 6000)
+  }
+
+  /** Look a line up for `what`, announcing it rather than failing quietly. */
+  function requireLine(lineId, what) {
+    const line = effectiveSong.lines.find((l) => l.id === lineId)
+    if (!line) reportLostEdit(what)
+    return line
+  }
+
   function updateLine(lineId, patch) {
-    const lines = effectiveSong.lines.map((l) => (l.id === lineId ? { ...l, ...patch } : l))
+    let found = false
+    const lines = effectiveSong.lines.map((l) => {
+      if (l.id !== lineId) return l
+      found = true
+      return { ...l, ...patch }
+    })
+    // Without this the map quietly returns the list unchanged and commits it:
+    // a PATCH that says nothing, and an edit the user watched disappear.
+    if (!found) return reportLostEdit('изменение строки')
     commitPatch({ lines })
   }
 
   function deleteLine(lineId) {
     const idx = effectiveSong.lines.findIndex((l) => l.id === lineId)
-    if (idx === -1) return
+    if (idx === -1) return reportLostEdit('удаление строки')
     const line = effectiveSong.lines[idx]
     if (pendingLineDeleteRef.current) {
       clearTimeout(pendingLineDeleteRef.current.timer)
@@ -656,13 +693,17 @@ export default function SongEditor({
   // only if the symbol didn't actually change.
   function commitPicker(chord, frets = null) {
     if (!picker) return
-    const line = effectiveSong.lines.find((l) => l.id === picker.lineId)
+    const line = requireLine(picker.lineId, 'аккорд')
     if (!line) return closePicker()
     const voicing = frets ? encodeVoicing(frets) : null
     let chords
     if (picker.mode === 'add') {
       chords = [...line.chords, { id: uid(), position: picker.position, chord, voicing }]
     } else {
+      if (!line.chords.some((c) => c.id === picker.chordId)) {
+        closePicker()
+        return reportLostEdit('аккорд')
+      }
       chords = line.chords.map((c) =>
         c.id === picker.chordId
           ? { ...c, chord, voicing: frets ? voicing : c.chord === chord ? c.voicing : null }
@@ -675,9 +716,13 @@ export default function SongEditor({
 
   function deletePicker() {
     if (!picker) return
-    const line = effectiveSong.lines.find((l) => l.id === picker.lineId)
+    const line = requireLine(picker.lineId, 'удаление аккорда')
     if (!line) return closePicker()
     const chords = line.chords.filter((c) => c.id !== picker.chordId)
+    if (chords.length === line.chords.length) {
+      closePicker()
+      return reportLostEdit('удаление аккорда')
+    }
     updateLine(picker.lineId, { chords })
     closePicker()
   }
@@ -723,11 +768,12 @@ export default function SongEditor({
     // chordMenu.chordId comes from what's actually rendered, and while
     // transposed that has different chord ids than the raw `song` object,
     // so looking it up there silently found nothing to delete.
-    const line = effectiveSong.lines.find((l) => l.id === chordMenu.lineId)
-    if (line) {
-      updateLine(line.id, { chords: line.chords.filter((c) => c.id !== chordMenu.chordId) })
-    }
+    const line = requireLine(chordMenu.lineId, 'удаление аккорда')
     closeChordMenu()
+    if (!line) return
+    const chords = line.chords.filter((c) => c.id !== chordMenu.chordId)
+    if (chords.length === line.chords.length) return reportLostEdit('удаление аккорда')
+    updateLine(line.id, { chords })
   }
   function handleChordMenuFingering() {
     if (!chordMenu) return
@@ -741,30 +787,40 @@ export default function SongEditor({
     })
     closeChordMenu()
   }
+  /**
+   * The target line's chords with the fingering modal's chord set to `code`.
+   * `null` when the modal's target no longer resolves — reported, not ignored:
+   * this is the one handler that leaves its dialog open, so a tap that does
+   * nothing looks exactly like a tap that did not register.
+   */
+  function voicedChords(code) {
+    const line = requireLine(fingeringTarget.lineId, 'аппликатура')
+    if (!line) return null
+    if (!line.chords.some((c) => c.id === fingeringTarget.chordId)) {
+      reportLostEdit('аппликатура')
+      return null
+    }
+    return line.chords.map((c) => (c.id === fingeringTarget.chordId ? { ...c, voicing: code } : c))
+  }
+
   // Picked one of the fingering cards from the library for this exact
   // chord — keep the name, just remember which shape to use here. Stays open
   // (with the picked card now highlighted) so the choice is visible without
   // reopening the modal. `code` is already the library's encoded string.
   function handleSelectVoicing(code) {
     if (!fingeringTarget) return
-    const line = effectiveSong.lines.find((l) => l.id === fingeringTarget.lineId)
-    if (!line) return
-    const chords = line.chords.map((c) =>
-      c.id === fingeringTarget.chordId ? { ...c, voicing: code } : c
-    )
-    updateLine(line.id, { chords })
+    const chords = voicedChords(code)
+    if (!chords) return
+    updateLine(fingeringTarget.lineId, { chords })
     setFingeringTarget((cur) => (cur ? { ...cur, voicing: code } : cur))
   }
   // Clicking the already-selected card again: clear it, back to "no specific
   // shape pinned for this spot".
   function handleDeselectVoicing() {
     if (!fingeringTarget) return
-    const line = effectiveSong.lines.find((l) => l.id === fingeringTarget.lineId)
-    if (!line) return
-    const chords = line.chords.map((c) =>
-      c.id === fingeringTarget.chordId ? { ...c, voicing: null } : c
-    )
-    updateLine(line.id, { chords })
+    const chords = voicedChords(null)
+    if (!chords) return
+    updateLine(fingeringTarget.lineId, { chords })
     setFingeringTarget((cur) => (cur ? { ...cur, voicing: null } : cur))
   }
   function closeFingeringModal() {
@@ -1132,6 +1188,18 @@ export default function SongEditor({
           expiresAt={pendingLineDelete.expiresAt}
           onUndo={undoLineDelete}
         />
+      )}
+
+      {/* Should never appear. If it does, something the user did was dropped,
+          and they get to know that instead of wondering why the song did not
+          change — see reportLostEdit. */}
+      {lostEdit && (
+        <div className="save-banner" role="alert">
+          <span>Правка не применилась — песня изменилась. Попробуйте ещё раз.</span>
+          <button type="button" onClick={() => setLostEdit(null)}>
+            Понятно
+          </button>
+        </div>
       )}
 
       {printPreview && (

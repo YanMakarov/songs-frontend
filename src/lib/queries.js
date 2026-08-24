@@ -14,6 +14,7 @@ import {
   listMovableShapes,
   listSongs,
 } from './api.js'
+import { reuseLineIds } from './lineIdentity.js'
 import { queryKeys } from './queryKeys.js'
 import { getPendingPatch } from './writeQueue.js'
 
@@ -40,17 +41,29 @@ export function useSongsQuery() {
  * as-is is a visible rollback — the chord the user just added blinks out of
  * the song and only sticks when they add it a second time. `rev` still comes
  * from the server, so the next write is based on the version just read.
+ *
+ * Line and chord ids are carried over from the copy already in the cache — see
+ * lineIdentity.js. The server mints new ones on every read, and taking them at
+ * face value remounts every row and invalidates the ids any open popover is
+ * holding, which loses the edit the user is in the middle of making.
+ *
+ * @param {string} songId
+ * @param {object} [previous] the song as it currently sits in the cache
  */
-export async function fetchSongWithPendingEdits(songId) {
+export async function fetchSongWithPendingEdits(songId, previous) {
   const fetched = await getSong(songId)
+  const stable = Array.isArray(fetched?.lines)
+    ? { ...fetched, lines: reuseLineIds(previous?.lines, fetched.lines) }
+    : fetched
   const pending = getPendingPatch(songId)
-  return pending ? { ...fetched, ...pending } : fetched
+  return pending ? { ...stable, ...pending } : stable
 }
 
 export function useSongQuery(songId) {
   return useQuery({
     queryKey: queryKeys.song(songId),
-    queryFn: () => fetchSongWithPendingEdits(songId),
+    queryFn: ({ client, queryKey }) =>
+      fetchSongWithPendingEdits(songId, client.getQueryData(queryKey)),
     enabled: Boolean(songId),
   })
 }
