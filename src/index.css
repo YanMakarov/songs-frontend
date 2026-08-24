@@ -965,6 +965,9 @@ button { cursor: pointer; }
 .view-toggle-row { display: flex; justify-content: flex-start; align-items: center; gap: 10px; }
 /* Off by look as well as by state: a muted outline until it is on. */
 .comments-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   border: 1px solid var(--border);
   background: transparent;
   color: var(--text-secondary);
@@ -982,6 +985,7 @@ button { cursor: pointer; }
   color: var(--chip-text);
 }
 .comments-toggle:active { transform: scale(0.96); }
+.comments-toggle svg { width: 15px; height: 15px; flex: none; }
 .text-scale-row {
   display: flex;
   align-items: center;
@@ -3264,4 +3268,174 @@ button { cursor: pointer; }
 
 .install-prompt-go:active {
   transform: scale(0.97);
+}
+
+
+/* Song tabs (harmony / notes) -------------------------------------------- */
+
+/* A phone-app bottom bar: low, quiet, always in the same place. Two screens
+   is exactly the number that does not deserve a menu. */
+.song-tabs {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(720px, 100vw);
+  z-index: 30;
+  display: flex;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  backdrop-filter: blur(16px);
+  border-top: 1px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.song-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 6px 4px 7px;
+  border: none;
+  background: none;
+  color: var(--text-secondary);
+  opacity: 0.75;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  transition: color 120ms ease, opacity 120ms ease;
+}
+/* Not the accent colour: switching screens is not an action to advertise. */
+.song-tab.is-active {
+  color: var(--text);
+  opacity: 1;
+}
+.song-tab:active { opacity: 0.6; }
+/* No blue flash under the finger — the bar is meant to be unobtrusive. */
+.song-tab { -webkit-tap-highlight-color: transparent; }
+.song-tab-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 18px;
+}
+.song-tab-dot {
+  position: absolute;
+  top: -1px;
+  right: -5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  opacity: 0.65;
+}
+.song-tab-label {
+  line-height: 1.2;
+}
+
+/* Room for the bar, so it never sits on top of the last line or the FAB. */
+.has-song-tabs .canvas { padding-bottom: 200px; }
+.has-song-tabs .fab { bottom: calc(28px + 54px + env(safe-area-inset-bottom)); }
+.has-song-tabs .undo-banner { bottom: calc(24px + 54px + env(safe-area-inset-bottom)); }
+
+/* Notes ------------------------------------------------------------------ */
+
+.song-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.notes {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  padding: 10px 16px calc(70px + env(safe-area-inset-bottom));
+}
+.notes-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+.notes-tool {
+  min-width: 32px;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--radius-s);
+  background: none;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1;
+}
+.notes-tool.is-active {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.notes-tool:active { background: var(--surface-pressed); }
+.notes-tool-sep {
+  width: 1px;
+  height: 18px;
+  margin: 0 6px;
+  background: var(--border);
+}
+.notes-link-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.notes-link-bar input {
+  flex: 1;
+  min-width: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-s);
+  background: var(--surface);
+  font-size: 14px;
+}
+.notes-link-bar input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.notes-editor {
+  flex: 1;
+  min-height: 45vh;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-m);
+  background: var(--surface);
+  color: var(--text);
+  font-size: calc(15px * var(--song-scale, 1));
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.notes-editor:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+}
+.notes-editor[data-empty='true']::before {
+  content: attr(data-placeholder);
+  color: var(--text-secondary);
+  opacity: 0.6;
+  pointer-events: none;
+}
+.notes-editor a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+@media print {
+  /* Notes are personal and local; the PDF is the song. */
+  .song-tabs,
+  .song-panel { display: none !important; }
 }

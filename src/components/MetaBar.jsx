@@ -2,6 +2,8 @@ import { useRef, useState, useEffect } from 'react'
 import SegmentedControl from './SegmentedControl.jsx'
 import { TIME_SIGNATURES } from '../lib/music.js'
 import Tooltip from './Tooltip.jsx'
+import { IconEye, IconEyeOff } from './Icons.jsx'
+import { useEditableText } from '../lib/useEditableText.js'
 
 const VIEW_OPTIONS = [
   { value: 'both', label: 'Всё' },
@@ -56,6 +58,10 @@ export default function MetaBar({
   
   // Check if we should show detect key button
   const [showDetectKey, setShowDetectKey] = useState(false)
+  // Held locally for the same reason as a comment row: a title fed back from
+  // the query cache is rewritten a microtask after the keystroke, which drops
+  // the caret at the end of the name.
+  const [title, setTitle] = useEditableText(song.title, (next) => onChange({ title: next }))
   const hasChords = extractAllChords(song).length > 0
   const hasNoKey = !song.key || song.key.trim() === ''
   
@@ -186,9 +192,9 @@ export default function MetaBar({
     >
       <input
         className="title-input"
-        value={song.title}
+        value={title}
         placeholder="Название песни"
-        onChange={(e) => onChange({ title: e.target.value })}
+        onChange={(e) => setTitle(e.target.value)}
       />
 
       <div className="meta-row">
@@ -278,7 +284,8 @@ export default function MetaBar({
             onClick={() => onToggleComments(!showComments)}
             title={showComments ? 'Скрыть комментарии во всех песнях' : 'Показать комментарии во всех песнях'}
           >
-            Комментарии
+            {showComments ? <IconEye /> : <IconEyeOff />}
+            <span>Комментарии</span>
           </button>
         )}
       </div>

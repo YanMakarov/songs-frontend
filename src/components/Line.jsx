@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { IconClose, IconMusic, IconPageBreak, IconGrip } from './Icons.jsx'
 import Tooltip from './Tooltip.jsx'
 import { parseChord, noteToSemitone } from '../lib/music.js'
+import { useEditableText } from '../lib/useEditableText.js'
 
 const DRAG_THRESHOLD = 4
 const ARM_DELAY_MS = 500
@@ -90,6 +91,12 @@ export default function Line({
   const [editingRepeat, setEditingRepeat] = useState(false)
   const [repeatDraft, setRepeatDraft] = useState('')
   const [armedChordId, setArmedChordId] = useState(null)
+  // A comment is typed straight into the row, without the commit-on-Enter step
+  // the other fields have, so its text is held locally — see the hook for why
+  // a field fed back from the cache loses the caret on every keystroke.
+  const [commentText, setCommentText] = useEditableText(line.lyrics || '', (next) =>
+    onUpdateLine({ lyrics: next }),
+  )
   const chordGestureRef = useRef(false)
   const gestureEndedAtRef = useRef(0)
   const lastDesktopClickAtRef = useRef(0)
@@ -168,7 +175,7 @@ export default function Line({
       alive = false
       observer.disconnect()
     }
-  }, [line.lyrics, isComment, mode])
+  }, [commentText, isComment, mode])
 
   function commitRepeat() {
     const trimmed = repeatDraft.trim()
@@ -698,7 +705,7 @@ export default function Line({
             ref={commentRef}
             className="comment-input"
             rows={1}
-            value={line.lyrics || ''}
+            value={commentText}
             // Locked means nothing is written. `readOnly` and not `disabled`
             // so the text can still be selected and copied, and so tapping it
             // does not raise the on-screen keyboard over the song.
@@ -709,7 +716,7 @@ export default function Line({
             // which is the whole point of the field. Escape gives up focus,
             // and the value is already committed on each keystroke — the
             // write queue debounces it into one PATCH.
-            onChange={(e) => onUpdateLine({ lyrics: e.target.value })}
+            onChange={(e) => setCommentText(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Escape') e.currentTarget.blur()
             }}

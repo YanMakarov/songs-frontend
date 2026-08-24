@@ -1,11 +1,11 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import MetaBar from './MetaBar.jsx'
 import Line from './Line.jsx'
 import ChordPicker from './ChordPicker.jsx'
 import AddLineMenu from './AddLineMenu.jsx'
 import ChordContextMenu from './ChordContextMenu.jsx'
 import ChordFingeringModal from './ChordFingeringModal.jsx'
-import { IconChevronLeft, IconPlus, IconSettings, IconUpload, IconEye, IconMusic } from './Icons.jsx'
+import { IconChevronLeft, IconPlus, IconSettings, IconUpload, IconPrinter, IconMusic } from './Icons.jsx'
 import ThemeMenu from './ThemeMenu.jsx'
 import Tooltip from './Tooltip.jsx'
 import { transposeChord, transposeKey, parseKey, keySemitoneDelta } from '../lib/music.js'
@@ -13,12 +13,16 @@ import { decodeVoicing, encodeVoicing } from '../lib/voicing.js'
 import { emptyLine, sectionLine, instrumentalLine, pagebreakLine, commentLine, uid, loadLocalSongOverride, saveLocalSongOverride, clearLocalSongOverride, loadShowComments, saveShowComments } from '../lib/storage.js'
 import { collapseRepeats } from '../lib/repeats.js'
 import PrintPreview from './PrintPreview.jsx'
+import SongNotes from './SongNotes.jsx'
+import SongTabs from './SongTabs.jsx'
 import { ApiError, importPdf } from '../lib/api.js'
 import { UNDO_TIMEOUT_MS } from '../lib/undo.js'
 import UndoBanner from './UndoBanner.jsx'
 import LockButton from './LockButton.jsx'
 import LockNotice from './LockNotice.jsx'
 import { useLock } from '../lib/useLock.js'
+import { readNote } from '../lib/notes.js'
+import { isEmptyNotesHtml } from '../lib/notesHtml.js'
 
 const LONG_PRESS_MS = 500
 const DBL_TAP_MS = 320
@@ -61,6 +65,10 @@ export default function SongEditor({
   const [confirmOriginalKey, setConfirmOriginalKey] = useState(false)
   const [localOverride, setLocalOverride] = useState(null)
   const [printPreview, setPrintPreview] = useState(false)
+  // Which half of the song screen is showing. Always starts on the harmony:
+  // the notes are a side channel, the chords are what the song is for.
+  const [tab, setTab] = useState('harmony')
+  const [hasNote, setHasNote] = useState(false)
   // Read on mount rather than held in App: the switch is global, and every
   // song screen mounts this component, so localStorage is the single source
   // of truth without another prop having to be threaded through.
@@ -128,6 +136,28 @@ export default function SongEditor({
     if (!song?.id) return
     setLocalOverride(loadLocalSongOverride(song.id))
   }, [song?.id])
+
+  // Opening another song puts us back on the harmony, and the tab marker is
+  // read once here — while the notes tab is closed nothing else knows whether
+  // this song has a note at all.
+  useEffect(() => {
+    if (!song?.id) return
+    let cancelled = false
+    setTab('harmony')
+    setHasNote(false)
+    readNote(song.id).then((note) => {
+      if (!cancelled) setHasNote(Boolean(note) && !isEmptyNotesHtml(note.html))
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [song?.id])
+
+  // Stable on purpose: SongNotes writes the editor's contents with innerHTML
+  // when this identity changes, which would cost the caret mid-sentence.
+  const handleNoteEmptyChange = useCallback((isEmpty) => {
+    setHasNote(!isEmpty)
+  }, [])
 
   // Keep the screen awake while a song is open (Screen Wake Lock API).
   // The lock is released by the browser when the tab is hidden, so we
@@ -967,7 +997,7 @@ export default function SongEditor({
   }
 
   return (
-    <div className="app" style={scaleStyleVars}>
+    <div className="app has-song-tabs" style={scaleStyleVars}>
       <div className="topbar">
         <button className="back-btn" onClick={onBack}>
           <IconChevronLeft />
@@ -993,7 +1023,7 @@ export default function SongEditor({
             onClick={() => setPrintPreview(true)}
             aria-label="Предпросмотр PDF"
           >
-            <IconEye />
+            <IconPrinter />
           </button>
         </Tooltip>
         <input
@@ -1007,23 +1037,25 @@ export default function SongEditor({
       </div>
       <LockNotice />
 
-      <MetaBar
-        song={effectiveSong}
-        onChange={commitPatch}
-        onTranspose={handleTranspose}
-        viewMode={viewMode}
-        onViewModeChange={onViewModeChange}
-        isTransposed={isTransposed}
-        // Both of these write to the server. They hang off container-level
-        // gestures (long press on the key field, double tap on the meta bar),
-        // which CSS cannot single out without also disabling what sits inside.
-        onRequestOriginalKeyReset={locked ? undefined : handleRequestOriginalKeyReset}
-        onResetOriginalKey={handleResetKeyToOriginal}
-        onRequestInsertTop={readOnlyChords || locked ? undefined : handleRequestInsertTop}
-        showComments={showComments}
-        hasComments={hasComments}
-        onToggleComments={toggleComments}
-      />
+      {tab === 'harmony' && (
+        <MetaBar
+          song={effectiveSong}
+          onChange={commitPatch}
+          onTranspose={handleTranspose}
+          viewMode={viewMode}
+          onViewModeChange={onViewModeChange}
+          isTransposed={isTransposed}
+          // Both of these write to the server. They hang off container-level
+          // gestures (long press on the key field, double tap on the meta bar),
+          // which CSS cannot single out without also disabling what sits inside.
+          onRequestOriginalKeyReset={locked ? undefined : handleRequestOriginalKeyReset}
+          onResetOriginalKey={handleResetKeyToOriginal}
+          onRequestInsertTop={readOnlyChords || locked ? undefined : handleRequestInsertTop}
+          showComments={showComments}
+          hasComments={hasComments}
+          onToggleComments={toggleComments}
+        />
+      )}
 
       <span
         ref={measureRef}
@@ -1038,34 +1070,51 @@ export default function SongEditor({
         {'M'.repeat(40)}
       </span>
 
-      <div className="canvas" ref={canvasRef}>
-        {viewMode === 'chords' && !hasAnyChords && (
-          <div className="canvas-hint">В этой песне пока нет аккордов</div>
-        )}
+      {tab === 'harmony' ? (
+        <div
+          className="canvas"
+          ref={canvasRef}
+          id="song-panel-harmony"
+          role="tabpanel"
+          aria-labelledby="song-tab-harmony"
+        >
+          {viewMode === 'chords' && !hasAnyChords && (
+            <div className="canvas-hint">В этой песне пока нет аккордов</div>
+          )}
 
-        {viewMode === 'chords' ? renderChordsFlow() : lineElements}
+          {viewMode === 'chords' ? renderChordsFlow() : lineElements}
 
-        {!readOnlyChords && (
-          <div
-            className="canvas-empty-area"
-            onDoubleClick={handleDoubleClick}
-            onPointerDown={handlePointerDown}
-            onPointerUp={handlePointerUp}
-            onPointerLeave={cancelPress}
-            onPointerCancel={cancelPress}
-          >
-            <div className="canvas-hint">
-              {importing
-                ? 'Импорт PDF…'
-                : isCoarsePointer
-                  ? 'Долгое нажатие по аккорду — изменить · долгое нажатие по строке — добавить аккорд'
-                  : 'Клик по строке — добавить аккорд · двойной клик по аккорду — изменить'}
+          {!readOnlyChords && (
+            <div
+              className="canvas-empty-area"
+              onDoubleClick={handleDoubleClick}
+              onPointerDown={handlePointerDown}
+              onPointerUp={handlePointerUp}
+              onPointerLeave={cancelPress}
+              onPointerCancel={cancelPress}
+            >
+              <div className="canvas-hint">
+                {importing
+                  ? 'Импорт PDF…'
+                  : isCoarsePointer
+                    ? 'Долгое нажатие по аккорду — изменить · долгое нажатие по строке — добавить аккорд'
+                    : 'Клик по строке — добавить аккорд · двойной клик по аккорду — изменить'}
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      ) : (
+        <div
+          className="song-panel"
+          id="song-panel-notes"
+          role="tabpanel"
+          aria-labelledby="song-tab-notes"
+        >
+          <SongNotes songId={song.id} onEmptyChange={handleNoteEmptyChange} />
+        </div>
+      )}
 
-      {!readOnlyChords && (
+      {tab === 'harmony' && !readOnlyChords && (
         <Tooltip label="Добавить строку">
           <button
             className="fab"
@@ -1201,6 +1250,8 @@ export default function SongEditor({
           </button>
         </div>
       )}
+
+      <SongTabs value={tab} onChange={setTab} hasNotes={hasNote} />
 
       {printPreview && (
         <PrintPreview

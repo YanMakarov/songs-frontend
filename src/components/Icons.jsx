@@ -200,6 +200,25 @@ export function IconDownload(props) {
   )
 }
 
+export function IconPrinter(props) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" {...props}>
+      {/* Sheet going in on top, printed sheet coming out below: the shape says
+          "this is what goes to paper", which is what the preview shows */}
+      <path d="M7 9V3.5h10V9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path
+        d="M7 18H5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <rect x="7" y="14.5" width="10" height="6" rx="1" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <circle cx="17.5" cy="12" r="1" fill="currentColor" />
+    </svg>
+  )
+}
+
 export function IconEye(props) {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" {...props}>
@@ -210,6 +229,23 @@ export function IconEye(props) {
         strokeLinejoin="round"
       />
       <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" />
+    </svg>
+  )
+}
+
+export function IconEyeOff(props) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" {...props}>
+      {/* Same eye as IconEye, struck through — the pair reads as one state
+          toggle rather than two unrelated glyphs */}
+      <path
+        d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M4 20 20 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   )
 }
@@ -231,6 +267,50 @@ export function IconUnlock(props) {
       {/* Shackle swung open — the state reads at a glance, not only by colour */}
       <path d="M8 10.5V7.5a4 4 0 0 1 7.7-1.5" />
       <circle cx="12" cy="15.5" r="1.3" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+export function IconLink(props) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" {...props}>
+      <path
+        d="M10.5 13.5a3.8 3.8 0 0 0 5.4 0l2.6-2.6a3.8 3.8 0 0 0-5.4-5.4l-1.3 1.3M13.5 10.5a3.8 3.8 0 0 0-5.4 0l-2.6 2.6a3.8 3.8 0 0 0 5.4 5.4l1.3-1.3"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+export function IconLinkOff(props) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" {...props}>
+      <path
+        d="M14.5 9.5l1.4-1.4a3.8 3.8 0 0 1 5.4 5.4l-1.6 1.6M9.5 14.5l-1.4 1.4a3.8 3.8 0 0 1-5.4-5.4l1.6-1.6"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path d="M4 4l16 16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+export function IconNote(props) {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" {...props}>
+      <path
+        d="M6 3.5h8.5L19 8v12.5H6z"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path d="M14 3.5V8h4.5" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+      <path d="M9 12h7M9 15.5h5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   )
 }
