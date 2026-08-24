@@ -241,17 +241,13 @@ export default function MetaBar({
         </div>
 
         <div className="transpose-group">
-          <Tooltip label="Ниже на полутон">
-            <button className="transpose-btn" onClick={() => onTranspose(-1)} aria-label="Ниже на полутон">
-              −
-            </button>
-          </Tooltip>
+          <button className="transpose-btn" onClick={() => onTranspose(-1)} aria-label="Ниже на полутон">
+            −
+          </button>
           <span className="transpose-label">транспон.</span>
-          <Tooltip label="Выше на полутон">
-            <button className="transpose-btn" onClick={() => onTranspose(1)} aria-label="Выше на полутон">
-              +
-            </button>
-          </Tooltip>
+          <button className="transpose-btn" onClick={() => onTranspose(1)} aria-label="Выше на полутон">
+            +
+          </button>
         </div>
       </div>
 

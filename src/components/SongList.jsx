@@ -6,12 +6,40 @@ import ConfirmModal from './ConfirmModal.jsx'
 import LockButton from './LockButton.jsx'
 import LockNotice from './LockNotice.jsx'
 import UndoBanner from './UndoBanner.jsx'
+import { noteToSemitone, parseKey } from '../lib/music.js'
 
-function formatMeta(song) {
-  const parts = [song.key]
+// Root semitone of a song's key (0-11), or null when it is missing or not a
+// key we can parse. Only used to tint the label in the colour chord style —
+// the same palette the chords themselves use, so a glance at the list and a
+// glance at the song agree on what colour the tonality is.
+function keySemitone(key) {
+  const { tonic, valid } = parseKey(key)
+  if (!valid) return null
+  return noteToSemitone(tonic)
+}
+
+function metaExtras(song) {
+  const parts = []
   if (song.bpm) parts.push(`${song.bpm} BPM`)
   if (song.timeSignature) parts.push(song.timeSignature)
-  return parts.filter(Boolean).join(' · ')
+  return parts.join(' · ')
+}
+
+function SongMeta({ song }) {
+  const key = (song.key || '').trim()
+  const extras = metaExtras(song)
+  if (!key && !extras) return null
+  return (
+    <div className="song-card-meta">
+      {key && (
+        <span className="song-card-key" data-chord-semitone={keySemitone(key) ?? undefined}>
+          {key}
+        </span>
+      )}
+      {key && extras ? ' · ' : null}
+      {extras}
+    </div>
+  )
 }
 
 export default function SongList({
@@ -361,7 +389,7 @@ export default function SongList({
                       </span>
                     )}
                   </div>
-                  <div className="song-card-meta">{formatMeta(song)}</div>
+                  <SongMeta song={song} />
                 </div>
                 <Tooltip label="Удалить песню">
                   <button

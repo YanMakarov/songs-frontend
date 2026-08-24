@@ -24,6 +24,7 @@ const MAX_RETRY_MS = 30000
 /**
  * @typedef {object} Entry
  * @property {object} patch     merged fields still to send
+ * @property {object|null} inFlight  fields the request in flight is carrying
  * @property {number|null} rev  version the pending edits are based on
  * @property {number} timer     debounce/backoff timeout id
  * @property {number} attempt   consecutive failures
@@ -77,6 +78,7 @@ export function enqueue(songId, patch, rev) {
   if (!songId || !patch) return
   const entry = entries.get(songId) || {
     patch: {},
+    inFlight: null,
     rev: rev ?? null,
     timer: 0,
     attempt: 0,
@@ -107,6 +109,7 @@ async function send(songId, { keepalive = false } = {}) {
   }
 
   entry.sending = true
+  entry.inFlight = patch
   entry.patch = {}
   notifyStatus(songId)
 
@@ -118,6 +121,7 @@ async function send(songId, { keepalive = false } = {}) {
     const current = entries.get(songId)
     if (!current) return
     current.sending = false
+    current.inFlight = null
     current.attempt = 0
     current.error = null
     // Edits made while the request was in flight rebase onto what came back.
@@ -140,6 +144,7 @@ async function send(songId, { keepalive = false } = {}) {
     const current = entries.get(songId)
     if (!current) return
     current.sending = false
+    current.inFlight = null
     // Put the unsent fields back underneath anything typed since.
     current.patch = { ...patch, ...current.patch }
 
@@ -199,6 +204,24 @@ export function retry(songId) {
 
 export function hasPending(songId) {
   return songId ? entries.has(songId) : entries.size > 0
+}
+
+/**
+ * The fields this song still owes the server: what is waiting out the debounce
+ * plus whatever a request in flight is carrying. Returns `null` when the queue
+ * is empty for that song.
+ *
+ * A copy of the song fetched from the server predates all of it — the write
+ * either has not been sent yet or has not been answered — so whoever puts that
+ * copy in the cache has to lay these fields back on top of it. Without that,
+ * a refetch landing in the window between an edit and its acknowledgement
+ * silently rolls the edit back on screen while the queue happily saves it.
+ */
+export function getPendingPatch(songId) {
+  const entry = entries.get(songId)
+  if (!entry) return null
+  const merged = { ...(entry.inFlight || {}), ...entry.patch }
+  return Object.keys(merged).length > 0 ? merged : null
 }
 
 export function getStatus(songId) {

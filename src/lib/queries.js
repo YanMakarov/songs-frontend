@@ -15,6 +15,7 @@ import {
   listSongs,
 } from './api.js'
 import { queryKeys } from './queryKeys.js'
+import { getPendingPatch } from './writeQueue.js'
 
 export function useSetlistQuery() {
   return useQuery({
@@ -31,10 +32,25 @@ export function useSongsQuery() {
   })
 }
 
+/**
+ * Read a song, then put back whatever the write queue still owes the server.
+ *
+ * The server's copy is behind by exactly that much: an edit made while this
+ * request was in flight, or one still waiting out the debounce. Storing it
+ * as-is is a visible rollback — the chord the user just added blinks out of
+ * the song and only sticks when they add it a second time. `rev` still comes
+ * from the server, so the next write is based on the version just read.
+ */
+export async function fetchSongWithPendingEdits(songId) {
+  const fetched = await getSong(songId)
+  const pending = getPendingPatch(songId)
+  return pending ? { ...fetched, ...pending } : fetched
+}
+
 export function useSongQuery(songId) {
   return useQuery({
     queryKey: queryKeys.song(songId),
-    queryFn: () => getSong(songId),
+    queryFn: () => fetchSongWithPendingEdits(songId),
     enabled: Boolean(songId),
   })
 }

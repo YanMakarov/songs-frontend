@@ -90,6 +90,13 @@ export function patchSong(queryClient, songId, patch) {
   // obvious paths, but keyboard shortcuts, drag handlers and anything added
   // later would all have to remember. One choke point cannot be forgotten.
   if (blockedByLock()) return
+  // A refetch already in flight was answered by the server before this edit
+  // existed, and `setQueryData` does not stand in its way: it lands a moment
+  // later and puts the pre-edit body back, so the chord that was just added
+  // vanishes and re-adding it "works". Cancelling is what the one-shot
+  // mutations do in `onMutate`; song edits are the only writer that skipped
+  // it. `useSongQuery` covers the requests that start *after* this point.
+  void queryClient.cancelQueries({ queryKey: queryKeys.song(songId), exact: true })
   const current = queryClient.getQueryData(queryKeys.song(songId))
   if (!current) return
   queryClient.setQueryData(queryKeys.song(songId), { ...current, ...patch })

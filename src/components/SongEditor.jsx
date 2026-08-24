@@ -870,7 +870,7 @@ export default function SongEditor({
           <IconChevronLeft />
           Песни
         </button>
-        <div className="topbar-title">{song.title || 'Без названия'}</div>
+        <div className="topbar-title topbar-title-song">{song.title || 'Без названия'}</div>
         {!readOnlyChords && (
           <Tooltip label="Импорт из PDF">
             <button className="icon-btn" onClick={handlePickFile} aria-label="Импорт из PDF" disabled={importing}>

@@ -1,8 +1,21 @@
 import { useEffect, useState } from 'react'
 import { IconClose } from './Icons.jsx'
 import InstallSection from './InstallSection.jsx'
-import { getDisplayName, setDisplayName } from '../lib/storage.js'
+import SegmentedControl from './SegmentedControl.jsx'
+import { CHORD_STYLES, getDisplayName, setDisplayName } from '../lib/storage.js'
 import { useAuth } from '../lib/auth.jsx'
+
+const CHORD_STYLE_OPTIONS = [
+  { value: 'chip', label: 'Обычные' },
+  { value: 'color', label: 'Цветные' },
+  { value: 'plain', label: 'Как в PDF' },
+]
+
+const CHORD_STYLE_HINTS = {
+  chip: 'Аккорды выделены плашкой в акцентном цвете.',
+  color: 'Каждая ступень окрашена своим цветом.',
+  plain: 'Моноширинный текст без выделения — как на распечатке.',
+}
 
 const DEFAULT_MIN = 0.85
 const DEFAULT_MAX = 1.4
@@ -13,8 +26,8 @@ export default function AppSettingsModal({
   onClose,
   textScale,
   onTextScaleChange,
-  colorScheme,
-  onColorSchemeChange,
+  chordStyle,
+  onChordStyleChange,
   min,
   max,
   step,
@@ -55,10 +68,6 @@ export default function AppSettingsModal({
     const next = Number(e.target.value)
     if (!Number.isFinite(next)) return
     onTextScaleChange(clamp(next))
-  }
-
-  function handleToggleColorScheme(e) {
-    onColorSchemeChange?.(e.target.checked)
   }
 
   async function handleSignOut() {
@@ -156,17 +165,14 @@ export default function AppSettingsModal({
           <InstallSection />
 
           <div className="settings-field">
-            <label htmlFor="app-settings-color-scheme">Цветовая схема аккордов</label>
-            <label className="switch-row">
-              <input
-                id="app-settings-color-scheme"
-                type="checkbox"
-                checked={Boolean(colorScheme)}
-                onChange={handleToggleColorScheme}
-              />
-              <span className="switch" aria-hidden="true" />
-              <span className="switch-label">Окрашивать аккорды по тональности</span>
-            </label>
+            <label>Вид аккордов</label>
+            <SegmentedControl
+              name="Вид аккордов"
+              value={CHORD_STYLES.includes(chordStyle) ? chordStyle : 'chip'}
+              onChange={(next) => onChordStyleChange?.(next)}
+              options={CHORD_STYLE_OPTIONS}
+            />
+            <div className="settings-hint">{CHORD_STYLE_HINTS[chordStyle] || CHORD_STYLE_HINTS.chip}</div>
           </div>
         </div>
       </div>

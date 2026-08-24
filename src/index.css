@@ -153,6 +153,15 @@ button { cursor: pointer; }
   cursor: text;
 }
 .topbar-title:active { background: var(--surface-2); }
+
+/* На узком экране рядом с названием стоят кнопка «Песни» и до пяти круглых
+   кнопок: на само название остаётся пара букв, а обрезок вроде «Ко…» не
+   сообщает ничего. Поэтому в редакторе песни его прячем — название целиком
+   видно и правится строкой ниже, в мета-баре. Прячем видимостью, а не
+   display: none, чтобы элемент остался распоркой и кнопки не съехали влево. */
+@media (max-width: 640px) {
+  .topbar-title-song { visibility: hidden; }
+}
 .topbar-title-input {
   flex: 1;
   font-size: 17px;
@@ -316,6 +325,30 @@ button { cursor: pointer; }
   color: var(--text-secondary);
   margin-top: 2px;
 }
+/* The tonality is plain secondary text like the rest of the meta line, except
+   in the colour chord style — there it is tinted by its root note, using the
+   very same palette the chords inside the song use, so the list already tells
+   you what colour a song is going to be. */
+[data-chord-style='color'] .song-card-key {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 6px;
+  color: var(--chip-text);
+  background: var(--chip-bg);
+}
+[data-chord-style='color'] .song-card-key[data-chord-semitone='0'] { color: var(--chord-color-0); background: color-mix(in srgb, var(--chord-color-0) 14%, var(--surface)); }
+[data-chord-style='color'] .song-card-key[data-chord-semitone='1'] { color: var(--chord-color-1); background: color-mix(in srgb, var(--chord-color-1) 14%, var(--surface)); }
+[data-chord-style='color'] .song-card-key[data-chord-semitone='2'] { color: var(--chord-color-2); background: color-mix(in srgb, var(--chord-color-2) 14%, var(--surface)); }
+[data-chord-style='color'] .song-card-key[data-chord-semitone='3'] { color: var(--chord-color-3); background: color-mix(in srgb, var(--chord-color-3) 14%, var(--surface)); }
+[data-chord-style='color'] .song-card-key[data-chord-semitone='4'] { color: var(--chord-color-4); background: color-mix(in srgb, var(--chord-color-4) 14%, var(--surface)); }
+[data-chord-style='color'] .song-card-key[data-chord-semitone='5'] { color: var(--chord-color-5); background: color-mix(in srgb, var(--chord-color-5) 14%, var(--surface)); }
+[data-chord-style='color'] .song-card-key[data-chord-semitone='6'] { color: var(--chord-color-6); background: color-mix(in srgb, var(--chord-color-6) 14%, var(--surface)); }
+[data-chord-style='color'] .song-card-key[data-chord-semitone='7'] { color: var(--chord-color-7); background: color-mix(in srgb, var(--chord-color-7) 14%, var(--surface)); }
+[data-chord-style='color'] .song-card-key[data-chord-semitone='8'] { color: var(--chord-color-8); background: color-mix(in srgb, var(--chord-color-8) 14%, var(--surface)); }
+[data-chord-style='color'] .song-card-key[data-chord-semitone='9'] { color: var(--chord-color-9); background: color-mix(in srgb, var(--chord-color-9) 14%, var(--surface)); }
+[data-chord-style='color'] .song-card-key[data-chord-semitone='10'] { color: var(--chord-color-10); background: color-mix(in srgb, var(--chord-color-10) 14%, var(--surface)); }
+[data-chord-style='color'] .song-card-key[data-chord-semitone='11'] { color: var(--chord-color-11); background: color-mix(in srgb, var(--chord-color-11) 14%, var(--surface)); }
 .song-card-delete {
   border: none;
   background: none;
@@ -1070,34 +1103,54 @@ button { cursor: pointer; }
 }
 .chord-chip:active { background: var(--chip-bg-hover); }
 
-/* Color-coding: when the app-level color scheme is enabled, chord chips and
-   tokens are tinted by their root note (one color per semitone). The palette
-   lives in --chord-color-0..11 above (per theme), so shades can be tweaked
+/* Color-coding: in the "color" chord style, chord chips and tokens are tinted
+   by their root note (one color per semitone). The palette lives in
+   --chord-color-0..11 above (per theme), so shades can be tweaked
    independently for light/dark. */
-[data-color-scheme='on'] .chord-chip[data-chord-semitone='0'] { color: var(--chord-color-0); background: color-mix(in srgb, var(--chord-color-0) 14%, var(--surface)); }
-[data-color-scheme='on'] .chord-chip[data-chord-semitone='1'] { color: var(--chord-color-1); background: color-mix(in srgb, var(--chord-color-1) 14%, var(--surface)); }
-[data-color-scheme='on'] .chord-chip[data-chord-semitone='2'] { color: var(--chord-color-2); background: color-mix(in srgb, var(--chord-color-2) 14%, var(--surface)); }
-[data-color-scheme='on'] .chord-chip[data-chord-semitone='3'] { color: var(--chord-color-3); background: color-mix(in srgb, var(--chord-color-3) 14%, var(--surface)); }
-[data-color-scheme='on'] .chord-chip[data-chord-semitone='4'] { color: var(--chord-color-4); background: color-mix(in srgb, var(--chord-color-4) 14%, var(--surface)); }
-[data-color-scheme='on'] .chord-chip[data-chord-semitone='5'] { color: var(--chord-color-5); background: color-mix(in srgb, var(--chord-color-5) 14%, var(--surface)); }
-[data-color-scheme='on'] .chord-chip[data-chord-semitone='6'] { color: var(--chord-color-6); background: color-mix(in srgb, var(--chord-color-6) 14%, var(--surface)); }
-[data-color-scheme='on'] .chord-chip[data-chord-semitone='7'] { color: var(--chord-color-7); background: color-mix(in srgb, var(--chord-color-7) 14%, var(--surface)); }
-[data-color-scheme='on'] .chord-chip[data-chord-semitone='8'] { color: var(--chord-color-8); background: color-mix(in srgb, var(--chord-color-8) 14%, var(--surface)); }
-[data-color-scheme='on'] .chord-chip[data-chord-semitone='9'] { color: var(--chord-color-9); background: color-mix(in srgb, var(--chord-color-9) 14%, var(--surface)); }
-[data-color-scheme='on'] .chord-chip[data-chord-semitone='10'] { color: var(--chord-color-10); background: color-mix(in srgb, var(--chord-color-10) 14%, var(--surface)); }
-[data-color-scheme='on'] .chord-chip[data-chord-semitone='11'] { color: var(--chord-color-11); background: color-mix(in srgb, var(--chord-color-11) 14%, var(--surface)); }
-[data-color-scheme='on'] .chords-only-row .chord-token[data-chord-semitone='0'] { color: var(--chord-color-0); }
-[data-color-scheme='on'] .chords-only-row .chord-token[data-chord-semitone='1'] { color: var(--chord-color-1); }
-[data-color-scheme='on'] .chords-only-row .chord-token[data-chord-semitone='2'] { color: var(--chord-color-2); }
-[data-color-scheme='on'] .chords-only-row .chord-token[data-chord-semitone='3'] { color: var(--chord-color-3); }
-[data-color-scheme='on'] .chords-only-row .chord-token[data-chord-semitone='4'] { color: var(--chord-color-4); }
-[data-color-scheme='on'] .chords-only-row .chord-token[data-chord-semitone='5'] { color: var(--chord-color-5); }
-[data-color-scheme='on'] .chords-only-row .chord-token[data-chord-semitone='6'] { color: var(--chord-color-6); }
-[data-color-scheme='on'] .chords-only-row .chord-token[data-chord-semitone='7'] { color: var(--chord-color-7); }
-[data-color-scheme='on'] .chords-only-row .chord-token[data-chord-semitone='8'] { color: var(--chord-color-8); }
-[data-color-scheme='on'] .chords-only-row .chord-token[data-chord-semitone='9'] { color: var(--chord-color-9); }
-[data-color-scheme='on'] .chords-only-row .chord-token[data-chord-semitone='10'] { color: var(--chord-color-10); }
-[data-color-scheme='on'] .chords-only-row .chord-token[data-chord-semitone='11'] { color: var(--chord-color-11); }
+[data-chord-style='color'] .chord-chip[data-chord-semitone='0'] { color: var(--chord-color-0); background: color-mix(in srgb, var(--chord-color-0) 14%, var(--surface)); }
+[data-chord-style='color'] .chord-chip[data-chord-semitone='1'] { color: var(--chord-color-1); background: color-mix(in srgb, var(--chord-color-1) 14%, var(--surface)); }
+[data-chord-style='color'] .chord-chip[data-chord-semitone='2'] { color: var(--chord-color-2); background: color-mix(in srgb, var(--chord-color-2) 14%, var(--surface)); }
+[data-chord-style='color'] .chord-chip[data-chord-semitone='3'] { color: var(--chord-color-3); background: color-mix(in srgb, var(--chord-color-3) 14%, var(--surface)); }
+[data-chord-style='color'] .chord-chip[data-chord-semitone='4'] { color: var(--chord-color-4); background: color-mix(in srgb, var(--chord-color-4) 14%, var(--surface)); }
+[data-chord-style='color'] .chord-chip[data-chord-semitone='5'] { color: var(--chord-color-5); background: color-mix(in srgb, var(--chord-color-5) 14%, var(--surface)); }
+[data-chord-style='color'] .chord-chip[data-chord-semitone='6'] { color: var(--chord-color-6); background: color-mix(in srgb, var(--chord-color-6) 14%, var(--surface)); }
+[data-chord-style='color'] .chord-chip[data-chord-semitone='7'] { color: var(--chord-color-7); background: color-mix(in srgb, var(--chord-color-7) 14%, var(--surface)); }
+[data-chord-style='color'] .chord-chip[data-chord-semitone='8'] { color: var(--chord-color-8); background: color-mix(in srgb, var(--chord-color-8) 14%, var(--surface)); }
+[data-chord-style='color'] .chord-chip[data-chord-semitone='9'] { color: var(--chord-color-9); background: color-mix(in srgb, var(--chord-color-9) 14%, var(--surface)); }
+[data-chord-style='color'] .chord-chip[data-chord-semitone='10'] { color: var(--chord-color-10); background: color-mix(in srgb, var(--chord-color-10) 14%, var(--surface)); }
+[data-chord-style='color'] .chord-chip[data-chord-semitone='11'] { color: var(--chord-color-11); background: color-mix(in srgb, var(--chord-color-11) 14%, var(--surface)); }
+[data-chord-style='color'] .chords-only-row .chord-token[data-chord-semitone='0'] { color: var(--chord-color-0); }
+[data-chord-style='color'] .chords-only-row .chord-token[data-chord-semitone='1'] { color: var(--chord-color-1); }
+[data-chord-style='color'] .chords-only-row .chord-token[data-chord-semitone='2'] { color: var(--chord-color-2); }
+[data-chord-style='color'] .chords-only-row .chord-token[data-chord-semitone='3'] { color: var(--chord-color-3); }
+[data-chord-style='color'] .chords-only-row .chord-token[data-chord-semitone='4'] { color: var(--chord-color-4); }
+[data-chord-style='color'] .chords-only-row .chord-token[data-chord-semitone='5'] { color: var(--chord-color-5); }
+[data-chord-style='color'] .chords-only-row .chord-token[data-chord-semitone='6'] { color: var(--chord-color-6); }
+[data-chord-style='color'] .chords-only-row .chord-token[data-chord-semitone='7'] { color: var(--chord-color-7); }
+[data-chord-style='color'] .chords-only-row .chord-token[data-chord-semitone='8'] { color: var(--chord-color-8); }
+[data-chord-style='color'] .chords-only-row .chord-token[data-chord-semitone='9'] { color: var(--chord-color-9); }
+[data-chord-style='color'] .chords-only-row .chord-token[data-chord-semitone='10'] { color: var(--chord-color-10); }
+[data-chord-style='color'] .chords-only-row .chord-token[data-chord-semitone='11'] { color: var(--chord-color-11); }
+
+/* "Как в PDF": chords carry no highlighting whatsoever — same monospace face
+   and weight as the lyrics under them, in the ordinary text color, so the
+   screen reads like the printed sheet. Dropping the chip's padding and its
+   -2px nudge also puts a chord exactly over the character it belongs to,
+   which is how the PDF places it. */
+[data-chord-style='plain'] .chord-chip {
+  background: none;
+  color: var(--text);
+  font-weight: 400;
+  padding: 1px 0;
+  border-radius: 0;
+  transform: none;
+}
+[data-chord-style='plain'] .chord-chip:active { background: none; }
+[data-chord-style='plain'] .chords-only-row,
+[data-chord-style='plain'] .chords-only-row .chord-token {
+  color: var(--text);
+  font-weight: 400;
+}
 
 /* Larger invisible hit area for chord chips on touch devices */
 @media (pointer: coarse) {
@@ -1105,6 +1158,16 @@ button { cursor: pointer; }
   .chords-only-row.editable .chord-token {
     /* extend the tappable box without changing visual size */
     margin: -6px -4px;
+    padding: 7px 10px;
+  }
+}
+@media (pointer: coarse) {
+  /* The same enlarged tap target, restated because the plain style's own
+     padding outranks the rule above regardless of the media query. Here the
+     horizontal margin cancels the whole padding rather than part of it, so a
+     plain chord still sits exactly over its character. */
+  [data-chord-style='plain'] .chord-chip {
+    margin: -6px -10px;
     padding: 7px 10px;
   }
 }

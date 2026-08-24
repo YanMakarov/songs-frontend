@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import SongList from './components/SongList.jsx'
 import SongEditor from './components/SongEditor.jsx'
 import ChordLibraryPage from './components/ChordLibraryPage.jsx'
-import { loadTheme, saveTheme, loadViewMode, saveViewMode, loadTextScale, saveTextScale, loadColorScheme, saveColorScheme } from './lib/storage.js'
+import { loadTheme, saveTheme, loadViewMode, saveViewMode, loadTextScale, saveTextScale, loadChordStyle, saveChordStyle } from './lib/storage.js'
 import { applyTheme } from './lib/theme.js'
 import AppSettingsModal from './components/AppSettingsModal.jsx'
 import ConflictModal from './components/ConflictModal.jsx'
@@ -40,7 +40,7 @@ export default function App() {
   const [theme, setTheme] = useState(loadTheme)
   const [viewMode, setViewMode] = useState(loadViewMode)
   const [textScale, setTextScale] = useState(loadTextScale)
-  const [colorScheme, setColorScheme] = useState(loadColorScheme)
+  const [chordStyle, setChordStyle] = useState(loadChordStyle)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const pendingDeleteRef = useRef(null)
 
@@ -64,9 +64,9 @@ export default function App() {
   }, [textScale])
 
   useEffect(() => {
-    saveColorScheme(colorScheme)
-    document.documentElement.setAttribute('data-color-scheme', colorScheme ? 'on' : 'off')
-  }, [colorScheme])
+    saveChordStyle(chordStyle)
+    document.documentElement.setAttribute('data-chord-style', chordStyle)
+  }, [chordStyle])
 
   const handleCreate = useCallback(async () => {
     // Create song without default key - let user set it or detect from chords
@@ -195,8 +195,8 @@ export default function App() {
         onClose={() => setSettingsOpen(false)}
         textScale={textScale}
         onTextScaleChange={setTextScale}
-        colorScheme={colorScheme}
-        onColorSchemeChange={setColorScheme}
+        chordStyle={chordStyle}
+        onChordStyleChange={setChordStyle}
       />
     </>
   )
