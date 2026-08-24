@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import ChordDiagram from './ChordDiagram.jsx'
 import ShapeEditor from './ShapeEditor.jsx'
-import { chordToNotes, getAllQualities, getQualityIntervals, NOTE_NAMES } from '../lib/chordNotes.js'
-import { noteToSemitone } from '../lib/music.js'
+import { getAllQualities, getQualityIntervals, normalizeQuality, NOTE_NAMES } from '../lib/chordNotes.js'
+import { normalizeChordText, noteToSemitone } from '../lib/music.js'
 import { matchShape } from '../lib/shapeMatch.js'
 import { computeStartFret, detectBarre } from '../lib/voicing.js'
 import {
   createMovableShape,
   deleteMovableShape,
-  listMovableShapes,
   renameMovableShape,
 } from '../lib/api.js'
+import { useMovableShapesQuery } from '../lib/queries.js'
+import { queryKeys } from '../lib/queryKeys.js'
+import { useQueryClient } from '@tanstack/react-query'
 import { IconChevronLeft, IconClose, IconPlus } from './Icons.jsx'
 
 const LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B']
@@ -20,11 +22,59 @@ const LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B']
 const QUALITY_PRIORITY = [
   '', 'm', '7', 'm7', 'maj7', 'maj9', '9', 'm9', 'sus2', 'sus4', '5',
   '7b5', 'm7b5', 'dim', 'dim7', '6', 'm6', 'aug', '69', 'add9',
+  'maj7#11', 'maj9#11', '7#11', '9#11', 'm(maj7)', '7b9', '7#9', '7#5',
 ]
 const QUALITIES = [...QUALITY_PRIORITY, ...getAllQualities().filter((q) => !QUALITY_PRIORITY.includes(q))]
 
 function qualityLabel(q) {
   return q === '' ? 'maj' : q
+}
+
+const DEFAULT_PICK = {
+  rootLetter: 'C',
+  rootAccidental: '',
+  quality: '',
+  bassLetter: 'C',
+  bassAccidental: '',
+  hasBass: false,
+}
+
+// Reads a chord label back into picker state. Deliberately parses the
+// spelling rather than going through chordToNotes: semitones have no
+// accidentals, so a round trip through them would reopen "Db" as "C#".
+function parseChordLabel(label) {
+  const raw = normalizeChordText((label || '').trim())
+  if (!raw) return null
+
+  const slashIdx = raw.indexOf('/')
+  let mainStr = raw
+  let bassStr = null
+  // "C6/9" is a quality spelled with a slash, not a chord over a bass note.
+  if (slashIdx !== -1 && /^[A-Ga-g][#b]?$/.test(raw.slice(slashIdx + 1))) {
+    mainStr = raw.slice(0, slashIdx)
+    bassStr = raw.slice(slashIdx + 1)
+  }
+
+  const m = mainStr.match(/^([A-Ga-g])([#b]?)(.*)$/)
+  if (!m) return null
+  const quality = normalizeQuality(m[3] || '')
+  // A quality no button can show would leave the form half-selected, which
+  // reads as broken; fall back to the default instead.
+  if (!getQualityIntervals(quality)) return null
+
+  return {
+    ...DEFAULT_PICK,
+    rootLetter: m[1].toUpperCase(),
+    rootAccidental: m[2] || '',
+    quality,
+    ...(bassStr
+      ? {
+          hasBass: true,
+          bassLetter: bassStr[0].toUpperCase(),
+          bassAccidental: bassStr.slice(1),
+        }
+      : null),
+  }
 }
 
 function semitoneToLetterAccidental(semitone) {
@@ -156,51 +206,33 @@ function ShapeCard({ shape, frets, root, note, onRename, onDelete }) {
   )
 }
 
-export default function ChordLibraryPage({ onBack, initialChord }) {
-  const [shapes, setShapes] = useState([])
-  const [loading, setLoading] = useState(true)
+export default function ChordLibraryPage({ onBack, initialChord, onChordChange }) {
+  const queryClient = useQueryClient()
+  // Shared with the fingering modal and persisted with the rest of the cache,
+  // so reopening this page costs no request and offline still shows the
+  // library instead of claiming it is empty.
+  const { data: shapes = [], isPending: loading, error, refetch } = useMovableShapesQuery()
   const [showAdd, setShowAdd] = useState(false)
   // Id of the shape saved a moment ago. It is shown even when it doesn't fit
   // the chord on screen — a save that leaves the page looking unchanged reads
   // as "nothing was added", which is exactly what it isn't.
   const [justAddedId, setJustAddedId] = useState(null)
 
-  const [rootLetter, setRootLetter] = useState('C')
-  const [rootAccidental, setRootAccidental] = useState('')
-  const [quality, setQuality] = useState('')
-  const [bassLetter, setBassLetter] = useState('C')
-  const [bassAccidental, setBassAccidental] = useState('')
-  const [hasBass, setHasBass] = useState(false)
+  // Deep link from a song's fingering modal ("Управлять в библиотеке"), or
+  // the chord this page itself wrote to the URL last time — either way the
+  // form opens on that chord instead of the default C major.
+  const [initialPick] = useState(() => parseChordLabel(initialChord) || DEFAULT_PICK)
+  const [rootLetter, setRootLetter] = useState(initialPick.rootLetter)
+  const [rootAccidental, setRootAccidental] = useState(initialPick.rootAccidental)
+  const [quality, setQuality] = useState(initialPick.quality)
+  const [bassLetter, setBassLetter] = useState(initialPick.bassLetter)
+  const [bassAccidental, setBassAccidental] = useState(initialPick.bassAccidental)
+  const [hasBass, setHasBass] = useState(initialPick.hasBass)
 
-  function reload() {
-    setLoading(true)
-    listMovableShapes()
-      .then(setShapes)
-      .finally(() => setLoading(false))
+  /** Replace the cached list, so one edited card does not refetch the rest. */
+  function patchShapes(fn) {
+    queryClient.setQueryData(queryKeys.movableShapes(), (prev) => fn(prev || []))
   }
-
-  useEffect(() => {
-    reload()
-  }, [])
-
-  // Deep link from a song's fingering modal ("Управлять в библиотеке") —
-  // prefill the form instead of just landing on the default C major.
-  useEffect(() => {
-    if (!initialChord) return
-    const parsed = chordToNotes(initialChord)
-    if (!parsed) return
-    const rootLA = semitoneToLetterAccidental(parsed.root)
-    setRootLetter(rootLA.letter)
-    setRootAccidental(rootLA.accidental)
-    setQuality(parsed.quality)
-    if (parsed.bass !== null && parsed.bass !== parsed.root) {
-      const bassLA = semitoneToLetterAccidental(parsed.bass)
-      setHasBass(true)
-      setBassLetter(bassLA.letter)
-      setBassAccidental(bassLA.accidental)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [initialChord])
 
   const root = useMemo(() => noteToSemitone(rootLetter + rootAccidental), [rootLetter, rootAccidental])
   const bass = useMemo(
@@ -209,6 +241,12 @@ export default function ChordLibraryPage({ onBack, initialChord }) {
   )
   const chordName = `${rootLetter}${rootAccidental}${quality}${hasBass ? `/${bassLetter}${bassAccidental}` : ''}`
   const qualityIntervals = getQualityIntervals(quality) || [0, 4, 7]
+
+  // Keep the address bar on the chord that is on screen, so a reload — or a
+  // link sent to someone else — reopens this chord rather than C major.
+  useEffect(() => {
+    if (onChordChange) onChordChange(chordName)
+  }, [chordName, onChordChange])
 
   const results = useMemo(() => {
     return shapes
@@ -228,11 +266,11 @@ export default function ChordLibraryPage({ onBack, initialChord }) {
   }, [justAddedId, results, shapes, root, qualityIntervals, bass])
 
   // Renaming touches one card, so it patches the loaded list in place instead
-  // of going through reload() — a full refetch would blank the whole pane to
-  // "Загрузка…" and back for a one-word edit.
+  // of refetching — a full refetch would blank the whole pane to "Загрузка…"
+  // and back for a one-word edit.
   async function handleRename(shapeId, name) {
     const updated = await renameMovableShape(shapeId, name)
-    setShapes((prev) =>
+    patchShapes((prev) =>
       prev.map((s) => (s.id === shapeId ? { ...s, name: updated ? updated.name : name || null } : s)),
     )
   }
@@ -240,7 +278,10 @@ export default function ChordLibraryPage({ onBack, initialChord }) {
   async function handleDelete(e, shapeId) {
     e.stopPropagation()
     await deleteMovableShape(shapeId)
-    reload()
+    // Drop the card now, then reconcile: the server is the one that knows
+    // whether anything else changed while this page was open.
+    patchShapes((prev) => prev.filter((s) => s.id !== shapeId))
+    queryClient.invalidateQueries({ queryKey: queryKeys.movableShapes() })
   }
 
   function selectChord(detected) {
@@ -277,7 +318,8 @@ export default function ChordLibraryPage({ onBack, initialChord }) {
       ).fits
     if (detectedFits) selectChord(detected)
     setJustAddedId(created && created.id ? created.id : null)
-    reload()
+    if (created) patchShapes((prev) => [...prev, created])
+    queryClient.invalidateQueries({ queryKey: queryKeys.movableShapes() })
   }
 
   return (
@@ -347,6 +389,16 @@ export default function ChordLibraryPage({ onBack, initialChord }) {
           </div>
           {loading ? (
             <div className="chord-library-hint">Загрузка…</div>
+          ) : error && shapes.length === 0 ? (
+            // Never silently: without this branch a failed request renders as
+            // "the library is empty", which is a claim about the data when the
+            // truth is about the network.
+            <div className="chord-library-hint">
+              Не удалось загрузить библиотеку — {error.message}
+              <button type="button" className="chord-library-hint-retry" onClick={() => refetch()}>
+                Повторить
+              </button>
+            </div>
           ) : shapes.length === 0 ? (
             <div className="chord-library-hint">В библиотеке пока нет форм — добавьте первую</div>
           ) : results.length === 0 && !pinned ? (

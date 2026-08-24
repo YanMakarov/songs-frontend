@@ -45,6 +45,7 @@
   --chip-text: #0A66E0;
   --overlay: rgba(0, 0, 0, 0.25);
   --shadow-card: 0 1px 2px rgba(0,0,0,0.06), 0 6px 16px rgba(0,0,0,0.06);
+  --shadow-row: 0 0.5px 1.5px rgba(0,0,0,0.05);
   --shadow-pop: 0 8px 30px rgba(0,0,0,0.18);
   --chord-color-0: #7B61FF;
   --chord-color-1: #5E3FBE;
@@ -79,6 +80,9 @@
   --chip-text: #7DB8FF;
   --overlay: rgba(0, 0, 0, 0.5);
   --shadow-card: 0 1px 2px rgba(0,0,0,0.3), 0 6px 20px rgba(0,0,0,0.35);
+  /* На чёрном фоне чёрная тень не рисует ничего — глубину здесь несёт
+     разница поверхности и фона, а не подложенное пятно. */
+  --shadow-row: none;
   --shadow-pop: 0 12px 36px rgba(0,0,0,0.55);
   --chord-color-0: #7B61FF;
   --chord-color-1: #5E3FBE;
@@ -242,7 +246,12 @@ button { cursor: pointer; }
   background: var(--surface);
   border-radius: var(--radius-m);
   padding: 14px 16px 14px 8px;
-  box-shadow: var(--shadow-card);
+  /* Ряд списка — не всплывающая плашка. В iOS такие ряды лежат на фоне, а не
+     висят над ним: границу даёт волосяная рамка и разница поверхности с
+     фоном, а не размытое пятно под карточкой. Тень остаётся только у того,
+     что действительно висит поверх содержимого, — у тостов и окна входа. */
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-row);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -596,6 +605,26 @@ button { cursor: pointer; }
   /* Только для чтения должно выглядеть спокойно, а не сломано. */
   opacity: 1;
   cursor: default;
+}
+
+/* Список песен в режиме просмотра ----------------------------------------
+   Отступы карточки рассчитаны на ручку перетаскивания: слева всего 8px,
+   потому что дальше идут её 40px, и название начинается в 62px от края.
+   В режиме просмотра ручки нет, и название упирается в те же 8px — ряд
+   выглядит сжатым и кривым, поле слева вчетверо уже поля справа.
+   Здесь ряд собирается заново по меркам iOS: 16px от края экрана до
+   карточки и ещё 18px внутри неё. Высота при этом почти не меняется
+   (69px против 72px), так что переключение замка не дёргает список. */
+.is-locked .song-list {
+  /* Нижние 100px в обычном режиме — место под плавающую кнопку «+». В режиме
+     просмотра кнопки нет, и они превращаются в пустую полосу под последней
+     песней. Остаётся обычный отступ плюс домашний индикатор. */
+  padding: 14px 16px calc(24px + env(safe-area-inset-bottom, 0px));
+  gap: 12px;
+}
+
+.is-locked .song-card {
+  padding: 16px 18px;
 }
 
 .conflict-modal {
@@ -1304,6 +1333,31 @@ button { cursor: pointer; }
   min-height: calc(30px * var(--song-scale));
   padding: 0 2px;
 }
+
+/* Chords-only view: the lines of a section flow horizontally, each line one
+   cell separated by a bar line. A line usually holds one or two chords, so a
+   row per line made the whole view a tall, nearly empty column; grouped this
+   way it reads like a chord chart while staying the very same chord objects
+   (transposition, ×N collapsing and the "Все" view are unaffected). */
+.chords-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  row-gap: calc(2px * var(--song-scale));
+  padding: calc(3px * var(--song-scale)) 0;
+}
+.chords-flow-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: calc(9px * var(--song-scale));
+  padding: 0 calc(11px * var(--song-scale));
+  /* The bar line sits before every cell, including the first one in a row, so
+     wrapping never leaves a group without its opening divider. */
+  border-left: 1px solid var(--border);
+}
+.chords-flow-cell:last-child { border-right: 1px solid var(--border); }
+.chords-flow .chords-flow-cell .repeat-tag { margin-left: calc(1px * var(--song-scale)); }
 .chords-only-row .chord-token { padding: 2px 4px; border-radius: 5px; user-select: none; }
 .chords-only-row .sep { color: var(--text-tertiary); margin: 0 6px; font-weight: 400; }
 .chords-only-row .repeat-tag {
@@ -1995,6 +2049,30 @@ button { cursor: pointer; }
 .pdf-chords-only .sep { color: #c7c7cc; margin: 0 6px; }
 .pdf-chords-only .chord-token { color: #0a66e0; font-weight: 600; }
 .pdf-repeat-tag { margin-left: 10px; color: #6b6b70; font-weight: 600; }
+
+/* Chords view in print: same horizontal cells as on screen, so the PDF and
+   the editor read alike. */
+.pdf-chords-flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  font-family: var(--font-mono);
+  font-size: var(--pdf-chord-size, 13px);
+  line-height: 1.6;
+  row-gap: 2px;
+}
+.pdf-chords-flow-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 9px;
+  padding: 0 10px;
+  border-left: 1px solid #c7c7cc;
+}
+.pdf-chords-flow-cell:last-child { border-right: 1px solid #c7c7cc; }
+.pdf-chords-flow-cell .chord-token { color: #0a66e0; font-weight: 600; }
+.pdf-chords-flow-cell .pdf-repeat-tag { margin-left: 1px; }
+
 .pdf-empty { color: #8a8a8e; font-style: italic; }
 
 .pdf-line {
@@ -2620,6 +2698,22 @@ button { cursor: pointer; }
   font-size: 14px;
   padding: 8px 4px;
 }
+.chord-library-hint-retry {
+  display: block;
+  margin: 8px 0 0;
+  padding: 6px 16px;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.chord-library-hint-retry:hover {
+  background: var(--accent);
+  color: #fff;
+}
 .shape-editor {
   display: flex;
   flex-direction: column;
@@ -2629,6 +2723,25 @@ button { cursor: pointer; }
   font-size: 13px;
   color: var(--text-secondary);
   min-height: 18px;
+}
+/* The same notes read as several chords; these are the choices. Styled as the
+   library's own tags so a reading here looks like the chord it will be filed
+   under there. */
+.shape-editor-readings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.shape-editor-readings .chord-library-tag {
+  flex: none;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.shape-editor-reading-mark {
+  font-size: 10px;
+  font-weight: 500;
+  opacity: 0.7;
 }
 .shape-editor-name-input {
   padding: 8px 12px;

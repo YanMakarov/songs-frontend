@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { IconClose, IconDownload, IconPlus } from './Icons.jsx'
-import { chordSequence } from '../lib/repeats.js'
+import { chordSequence, collapseRepeats } from '../lib/repeats.js'
 import { emptyLine } from '../lib/storage.js'
 
 const PDF_LYRICS_FONT_SIZE = 15
@@ -166,7 +166,7 @@ function PrintLineContent({ item, charWidth, onAddAfter, onDelete }) {
   const { line, kind } = item
   return (
     <div className="pdf-item">
-      <PrintLineBody line={line} kind={kind} charWidth={charWidth} />
+      <PrintLineBody line={line} kind={kind} cells={item.cells} charWidth={charWidth} />
       <div className="pdf-item-controls no-print">
         <button
           type="button"
@@ -195,7 +195,7 @@ function PrintLineContent({ item, charWidth, onAddAfter, onDelete }) {
   )
 }
 
-function PrintLineBody({ line, kind, charWidth }) {
+function PrintLineBody({ line, kind, cells, charWidth }) {
   if (kind === 'section') {
     return (
       <div className="pdf-section">
@@ -204,20 +204,25 @@ function PrintLineBody({ line, kind, charWidth }) {
       </div>
     )
   }
-  if (kind === 'chordsOnly') {
-    const seq = chordSequence(line)
+  // Chords view: a run of consecutive lines printed as one horizontal flow of
+  // cells, matching what the editor shows on screen.
+  if (kind === 'chordsFlow') {
     return (
-      <div className="pdf-chords-only">
-        {seq.length === 0 ? (
-          <span className="pdf-empty">Проигрыш</span>
-        ) : (
-          seq.map((c, i) => (
-            <span key={i}>
-              {i > 0 && <span className="sep">|</span>}
-              <span className="chord-token">{c}</span>
-            </span>
-          ))
-        )}
+      <div className="pdf-chords-flow">
+        {cells.map((cell) => (
+          <div className="pdf-chords-flow-cell" key={cell.id}>
+            {cell.chords.length === 0 ? (
+              <span className="pdf-empty">Проигрыш</span>
+            ) : (
+              cell.chords.map((c, i) => (
+                <span className="chord-token" key={i}>
+                  {c}
+                </span>
+              ))
+            )}
+            {cell.repeatCount > 1 && <span className="pdf-repeat-tag">×{cell.repeatCount}</span>}
+          </div>
+        ))}
       </div>
     )
   }
@@ -262,22 +267,55 @@ function PrintLineBody({ line, kind, charWidth }) {
 }
 
 function buildPrintableItems(song, viewMode) {
+  if (viewMode === 'chords') return buildChordItems(song)
   const items = []
   song.lines.forEach((line) => {
     if (line.type === 'pagebreak') return
-    if (viewMode === 'chords') {
-      if (line.type !== 'section' && !(line.chords && line.chords.length > 0)) return
-    } else if (viewMode === 'lyrics') {
+    if (viewMode === 'lyrics') {
       if (line.type === 'chords') return
     }
-    items.push({ line, kind: nodeKind(line, viewMode) })
+    items.push({ line, kind: nodeKind(line) })
   })
   return items
 }
 
-function nodeKind(line, viewMode) {
+// Same shape as the on-screen chords view: identical consecutive lines
+// collapse into one cell with ×N, and consecutive cells print as one
+// horizontal run. The run is a single item so it stays on one page and keeps
+// one set of hover controls, anchored to its last line.
+function buildChordItems(song) {
+  const relevant = song.lines.filter(
+    (l) => l.type === 'section' || (l.chords && l.chords.length > 0),
+  )
+  const items = []
+  let cells = []
+  let lastLine = null
+  function flush() {
+    if (cells.length) items.push({ line: lastLine, kind: 'chordsFlow', cells })
+    cells = []
+    lastLine = null
+  }
+  for (const group of collapseRepeats(relevant)) {
+    const line = relevant.find((l) => l.id === group.key)
+    if (!line) continue
+    if (line.type === 'section') {
+      flush()
+      items.push({ line, kind: 'section' })
+      continue
+    }
+    cells.push({
+      id: line.id,
+      chords: chordSequence(line),
+      repeatCount: group.count > 1 ? group.count : line.repeatCount || 1,
+    })
+    lastLine = line
+  }
+  flush()
+  return items
+}
+
+function nodeKind(line) {
   if (line.type === 'section') return 'section'
-  if (viewMode === 'chords') return 'chordsOnly'
   if (line.type === 'chords') return 'instrumental'
   return 'line'
 }

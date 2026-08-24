@@ -628,20 +628,25 @@ export default function Line({
     )
   }
 
+  // In the chords-only view a line is not a row of its own: it is one cell in
+  // a horizontal flow (see `.chords-flow` in SongEditor). A line usually
+  // carries one or two chords, so a row per line turned the whole view into a
+  // tall, nearly empty column. Cells keep the line as the unit — the same
+  // chord objects, the same ×N collapsing — but read as bar-ish groups
+  // separated by bar lines.
   if (mode === 'chordsOnly') {
     return (
-      <div className="line-row" data-line-id={line.id} data-line-mode="chordsOnly">
-        <div className="chords-only-row">
-          {sortedChords.map((c, i) => (
-            <span key={c.id}>
-              {i > 0 && <span className="sep">|</span>}
-              <span className="chord-token" data-chord-semitone={chordSemitone(c.chord) ?? undefined}>
-                {c.chord}
-              </span>
-            </span>
-          ))}
-          {repeatCount > 1 && <span className="repeat-tag">×{repeatCount}</span>}
-        </div>
+      <div className="chords-only-row chords-flow-cell" data-line-id={line.id} data-line-mode="chordsOnly">
+        {sortedChords.map((c) => (
+          <span
+            key={c.id}
+            className="chord-token"
+            data-chord-semitone={chordSemitone(c.chord) ?? undefined}
+          >
+            {c.chord}
+          </span>
+        ))}
+        {repeatCount > 1 && <span className="repeat-tag">×{repeatCount}</span>}
       </div>
     )
   }

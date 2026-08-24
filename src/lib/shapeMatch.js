@@ -50,10 +50,20 @@ export function matchShape(shape, targetRoot, qualityIntervals, bass = null) {
   const shapeIntervals = computeShapeIntervals(rootString, offsets)
   const shapeIntervalSet = new Set(Object.values(shapeIntervals))
 
-  const spelling = chordFitsIntervals(shapeIntervalSet, qualityIntervals)
-
   const bassInterval = bass !== null && bass !== undefined ? ((bass - targetRoot) % 12 + 12) % 12 : null
-  const bassMissing = bassInterval !== null && !shapeIntervalSet.has(bassInterval)
+
+  // A shape declares its own root (rootString), sounding or not, so a rootless
+  // voicing of an extended chord is a legitimate match here. The asked-for
+  // bass counts as a chord tone too — that is what makes "Am/G" a chord and
+  // not an Am with a wrong note in it.
+  const spelling = chordFitsIntervals(shapeIntervalSet, qualityIntervals, { rootKnown: true, bassInterval })
+  // "/G" asks for a G *underneath* — a shape with the G somewhere on top is a
+  // different voicing, and offering it would quietly ignore the slash. Strings
+  // run low to high, so the lowest sounding index is the bass.
+  const soundingStrings = Object.keys(shapeIntervals).map(Number).sort((a, b) => a - b)
+  const lowestString = soundingStrings.length ? soundingStrings[0] : null
+  const bassMissing =
+    bassInterval !== null && (lowestString === null || shapeIntervals[lowestString] !== bassInterval)
   const outOfRange = frets.some((f) => f > MAX_FRET)
 
   const fits = spelling.fits && !bassMissing && !outOfRange

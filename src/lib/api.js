@@ -52,22 +52,37 @@ export class AuthError extends ApiError {
 }
 
 /**
- * The request never reached the server.
+ * The request never reached the server — or took so long that we stopped
+ * waiting for it.
  *
  * `fetch` rejects rather than resolving, so this is the one failure with no
  * status at all — and the one the offline-first parts of the app must treat
- * as "ask again later" instead of an error.
+ * as "ask again later" instead of an error. A timeout belongs here for the
+ * same reason: from the app's side a connection that hangs is indistinguishable
+ * from one that never opened, and both are worth retrying.
  */
 export class OfflineError extends ApiError {
   constructor(cause) {
-    super('Нет связи с сервером', 0, null)
+    const timedOut = cause?.name === 'TimeoutError'
+    super(timedOut ? 'Сервер не ответил' : 'Нет связи с сервером', 0, null)
     this.cause = cause
+    this.timedOut = timedOut
   }
 }
 
 export function isOffline(error) {
   return error instanceof OfflineError
 }
+
+/**
+ * How long to wait before giving up on a request.
+ *
+ * `fetch` has no timeout of its own: a connection that opens and then stalls —
+ * captive portal, a phone drifting off the venue's wifi — hangs forever, and
+ * every screen waiting on it shows "Загрузка…" with no way out. Generous
+ * enough that a slow 3G round trip still lands.
+ */
+const DEFAULT_TIMEOUT_MS = 20000
 
 /** Called with the `AuthError` whenever a request comes back unauthenticated. */
 let onUnauthorized = null
@@ -95,7 +110,10 @@ async function request(path, options) {
  * report what it did with a write — whether it merged, and which fields it
  * took away from someone else.
  */
-async function requestWithMeta(path, { method = 'GET', body, headers = {}, keepalive = false } = {}) {
+async function requestWithMeta(
+  path,
+  { method = 'GET', body, headers = {}, keepalive = false, timeoutMs = DEFAULT_TIMEOUT_MS } = {},
+) {
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData
   const mergedHeaders = {
     Accept: 'application/json',
@@ -114,10 +132,12 @@ async function requestWithMeta(path, { method = 'GET', body, headers = {}, keepa
       // travels if the request asks for it. Without this every call is
       // anonymous and the whole app answers 401.
       credentials: 'include',
+      signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined,
     })
   } catch (err) {
-    // DNS failure, dropped connection, aeroplane mode. Distinct from any HTTP
-    // status: the caller can retry this one, and the write queue does.
+    // DNS failure, dropped connection, aeroplane mode, or our own timeout.
+    // Distinct from any HTTP status: the caller can retry this one, and the
+    // write queue does.
     throw new OfflineError(err)
   }
 
@@ -269,7 +289,9 @@ export async function importPdf(file) {
   if (!file) return null
   const formData = new FormData()
   formData.append('file', file)
-  return request(`/pdf/import`, { method: 'POST', body: formData })
+  // A scanned songbook is megabytes up and a parse down; the default budget is
+  // sized for JSON round trips and would cut this off mid-upload.
+  return request(`/pdf/import`, { method: 'POST', body: formData, timeoutMs: 120000 })
 }
 
 /**

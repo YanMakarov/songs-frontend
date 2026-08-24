@@ -479,8 +479,38 @@ function SongEditorRoute({
 
 function ChordLibraryRoute() {
   const navigate = useNavigate()
-  const [searchParams] = useSearchParams()
-  return <ChordLibraryPage initialChord={searchParams.get('chord') || null} onBack={() => navigate(-1)} />
+  const [searchParams, setSearchParams] = useSearchParams()
+  // Only what the URL said when the page opened: the library writes the
+  // picked chord back here, and re-reading it on every render would feed the
+  // page its own output.
+  const openedWithRef = useRef(searchParams.get('chord') || null)
+  const lastWrittenRef = useRef(searchParams.get('chord') || null)
+
+  // Replace rather than push — Back should leave the library, not step back
+  // through every chord that was looked at while inside it.
+  const handleChordChange = useCallback(
+    (chord) => {
+      if (lastWrittenRef.current === chord) return
+      lastWrittenRef.current = chord
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev)
+          next.set('chord', chord)
+          return next
+        },
+        { replace: true },
+      )
+    },
+    [setSearchParams],
+  )
+
+  return (
+    <ChordLibraryPage
+      initialChord={openedWithRef.current}
+      onChordChange={handleChordChange}
+      onBack={() => navigate(-1)}
+    />
+  )
 }
 
 function hasOriginalKeyValue(song) {

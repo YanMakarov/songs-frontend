@@ -11,6 +11,7 @@ import {
   getSetlist,
   getSong,
   listDeletedSongs,
+  listMovableShapes,
   listSongs,
 } from './api.js'
 import { queryKeys } from './queryKeys.js'
@@ -35,6 +36,27 @@ export function useSongQuery(songId) {
     queryKey: queryKeys.song(songId),
     queryFn: () => getSong(songId),
     enabled: Boolean(songId),
+  })
+}
+
+/**
+ * The shared library of movable chord shapes.
+ *
+ * Through the cache rather than a bare `fetch` for two reasons. It is read
+ * from two places that both mount often — the library page and the fingering
+ * modal behind every chord in a song — and a cold round trip each time is the
+ * whole delay you feel when tapping a chord. And it is persisted with the rest
+ * of the cache, so offline the shapes are still there instead of the page
+ * reporting an empty library.
+ *
+ * Longer `staleTime` than the songs: a shape is added once and then read for
+ * months, so revalidating it every five seconds buys nothing.
+ */
+export function useMovableShapesQuery() {
+  return useQuery({
+    queryKey: queryKeys.movableShapes(),
+    queryFn: listMovableShapes,
+    staleTime: 5 * 60 * 1000,
   })
 }
 

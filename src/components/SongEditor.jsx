@@ -777,6 +777,36 @@ export default function SongEditor({
     viewMode === 'chords'
       ? collapseRepeats(effectiveSong.lines.filter((l) => l.type === 'section' || l.type === 'pagebreak' || l.chords.length > 0))
       : null
+  // Chords view layout: consecutive chord-carrying lines flow horizontally
+  // inside one container, so a song whose chords change rarely reads as a few
+  // wide rows instead of a tall column of nearly empty ones. Sections and page
+  // breaks stay full width and break the flow, which is what keeps the layout
+  // roughly aligned with the song's structure.
+  function renderChordsFlow() {
+    const nodes = []
+    let run = []
+    let runKey = null
+    function flush() {
+      if (run.length) nodes.push(<div className="chords-flow" key={`flow-${runKey}`}>{run}</div>)
+      run = []
+      runKey = null
+    }
+    for (const g of groups) {
+      const line = effectiveSong.lines.find((l) => l.id === g.key)
+      if (!line) continue
+      if (line.type === 'section' || line.type === 'pagebreak') {
+        flush()
+        nodes.push(<Line key={g.key} line={line} mode="chordsOnly" />)
+        continue
+      }
+      const repeatCount = g.count > 1 ? g.count : line.repeatCount || 1
+      if (!run.length) runKey = g.key
+      run.push(<Line key={g.key} line={line} mode="chordsOnly" repeatCount={repeatCount} />)
+    }
+    flush()
+    return nodes
+  }
+
   const lineMode = viewMode === 'chords' ? 'chordsOnly' : viewMode === 'lyrics' ? 'lyrics' : 'both'
   const readOnlyChords = viewMode === 'chords'
   const hasAnyChords = groups ? groups.some((g) => g.sequence.length > 0) : true
@@ -907,13 +937,7 @@ export default function SongEditor({
           <div className="canvas-hint">В этой песне пока нет аккордов</div>
         )}
 
-        {viewMode === 'chords'
-          ? groups.map((g) => {
-              const line = effectiveSong.lines.find((l) => l.id === g.key)
-              const repeatCount = g.count > 1 ? g.count : line?.repeatCount || 1
-              return <Line key={g.key} line={line} mode="chordsOnly" repeatCount={repeatCount} />
-            })
-          : lineElements}
+        {viewMode === 'chords' ? renderChordsFlow() : lineElements}
 
         {!readOnlyChords && (
           <div

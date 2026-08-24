@@ -136,6 +136,7 @@ const ALL_ROOTS_FLAT = FLAT_NAMES
 const QUALITIES = [
   '', 'm', '7', 'm7', 'maj7', 'dim', 'aug', 'sus2', 'sus4',
   '6', 'm6', '9', 'm9', 'add9', '7sus4', 'dim7', '5',
+  'maj7#11', '7#11', 'm(maj7)', '7b9', '7#9', '7#5',
 ]
 
 export function fullChordCatalogue(preferFlat) {

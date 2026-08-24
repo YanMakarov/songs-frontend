@@ -1,9 +1,9 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import ChordDiagram from './ChordDiagram.jsx'
 import { chordToNotes, getQualityIntervals } from '../lib/chordNotes.js'
 import { computeStartFret, detectBarre, encodeVoicing } from '../lib/voicing.js'
 import { matchShape } from '../lib/shapeMatch.js'
-import { listMovableShapes } from '../lib/api.js'
+import { useMovableShapesQuery } from '../lib/queries.js'
 
 // Read-only picker over the shared movable-shape library for this exact
 // chord — no renaming and no freehand fretboard here. Shapes that don't
@@ -22,24 +22,12 @@ export default function ChordFingeringModal({
   readOnly = false,
 }) {
   const modalRef = useRef(null)
-  const [allShapes, setAllShapes] = useState([])
-  const [loading, setLoading] = useState(true)
+  // Shared, cached and persisted — see useMovableShapesQuery. Opening this
+  // modal on the tenth chord of a song costs no request at all, and offline it
+  // still has the shapes.
+  const { data: allShapes = [], isPending: loading, error, refetch } = useMovableShapesQuery()
 
   const parsedChord = useMemo(() => chordToNotes(chordText), [chordText])
-
-  useEffect(() => {
-    let ignore = false
-    listMovableShapes()
-      .then((rows) => {
-        if (!ignore) setAllShapes(rows)
-      })
-      .finally(() => {
-        if (!ignore) setLoading(false)
-      })
-    return () => {
-      ignore = true
-    }
-  }, [])
 
   useEffect(() => {
     function handleKeyDown(e) {
@@ -97,7 +85,17 @@ export default function ChordFingeringModal({
           </div>
         </div>
         <div className="fingering-modal-body">
-          {loading ? null : matches.length === 0 ? (
+          {loading ? null : error && allShapes.length === 0 ? (
+            // Never silently: without this branch a failed request renders as
+            // "no shape fits this chord", which reads as a fact about the
+            // library rather than about the network.
+            <div className="fingering-modal-empty">
+              Не удалось загрузить библиотеку форм — {error.message}
+              <button className="fingering-modal-editor-link" onClick={() => refetch()}>
+                Повторить
+              </button>
+            </div>
+          ) : matches.length === 0 ? (
             <div className="fingering-modal-empty">
               Ни одна форма из библиотеки не подходит к «{chordText}»
               <button
