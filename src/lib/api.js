@@ -62,8 +62,7 @@ export class AuthError extends ApiError {
  * from one that never opened, and both are worth retrying.
  */
 export class OfflineError extends ApiError {
-  constructor(cause) {
-    const timedOut = cause?.name === 'TimeoutError'
+  constructor(cause, timedOut = cause?.name === 'TimeoutError') {
     super(timedOut ? 'Сервер не ответил' : 'Нет связи с сервером', 0, null)
     this.cause = cause
     this.timedOut = timedOut
@@ -83,6 +82,39 @@ export function isOffline(error) {
  * enough that a slow 3G round trip still lands.
  */
 const DEFAULT_TIMEOUT_MS = 20000
+
+/**
+ * The timeout above, built by hand rather than with `AbortSignal.timeout`.
+ *
+ * That helper only exists from Safari 16 and Chrome 103. On anything older it
+ * is `undefined`, and calling it throws a `TypeError` — inside the same `try`
+ * that wraps `fetch`, so every request on the device died as «Нет связи с
+ * сервером» before a single byte was sent. An iPad left on iOS 15 could never
+ * open the app, and nothing in the message hinted at why. `AbortController`
+ * has been everywhere since 2017.
+ *
+ * The timer must outlive `fetch` resolving: the response headers can arrive
+ * promptly and the body still stall, so it is cleared only once the body has
+ * been read.
+ */
+function startTimeout(ms) {
+  if (!ms || typeof AbortController === 'undefined') {
+    return { signal: undefined, clear() {}, get timedOut() { return false } }
+  }
+  const controller = new AbortController()
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, ms)
+  return {
+    signal: controller.signal,
+    clear: () => clearTimeout(timer),
+    get timedOut() {
+      return timedOut
+    },
+  }
+}
 
 /** Called with the `AuthError` whenever a request comes back unauthenticated. */
 let onUnauthorized = null
@@ -110,10 +142,19 @@ async function request(path, options) {
  * report what it did with a write — whether it merged, and which fields it
  * took away from someone else.
  */
-async function requestWithMeta(
-  path,
-  { method = 'GET', body, headers = {}, keepalive = false, timeoutMs = DEFAULT_TIMEOUT_MS } = {},
-) {
+async function requestWithMeta(path, options = {}) {
+  // The timeout lives out here so that it covers reading the body too, not
+  // just the headers: a response that starts and then stalls has to fail the
+  // same way as one that never arrives.
+  const timeout = startTimeout(options.timeoutMs ?? DEFAULT_TIMEOUT_MS)
+  try {
+    return await sendRequest(path, options, timeout)
+  } finally {
+    timeout.clear()
+  }
+}
+
+async function sendRequest(path, { method = 'GET', body, headers = {}, keepalive = false }, timeout) {
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData
   const mergedHeaders = {
     Accept: 'application/json',
@@ -132,13 +173,13 @@ async function requestWithMeta(
       // travels if the request asks for it. Without this every call is
       // anonymous and the whole app answers 401.
       credentials: 'include',
-      signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined,
+      signal: timeout.signal,
     })
   } catch (err) {
     // DNS failure, dropped connection, aeroplane mode, or our own timeout.
     // Distinct from any HTTP status: the caller can retry this one, and the
     // write queue does.
-    throw new OfflineError(err)
+    throw new OfflineError(err, timeout.timedOut)
   }
 
   if (!response.ok) {
@@ -168,8 +209,18 @@ async function requestWithMeta(
   }
 
   const overwritten = response.headers.get('X-Overwritten-Fields')
+  let data
+  try {
+    data = await response.json()
+  } catch (err) {
+    // Headers arrived, the body did not — a connection that stalled halfway,
+    // or the timeout firing during the read. Same class of failure as a
+    // connection that never opened, so it is reported the same way instead of
+    // escaping as a bare `AbortError` nobody handles.
+    throw new OfflineError(err, timeout.timedOut)
+  }
   return {
-    data: await response.json(),
+    data,
     merged: response.headers.get('X-Merged') === 'true',
     overwritten: overwritten ? overwritten.split(',').filter(Boolean) : [],
   }

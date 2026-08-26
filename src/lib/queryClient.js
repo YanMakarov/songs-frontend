@@ -30,6 +30,19 @@ export const queryClient = new QueryClient({
       // song costs one conditional request and an empty 304.
       staleTime: BRIEFLY_FRESH,
       gcTime: ONE_DAY,
+      // `navigator.onLine` does not get a vote. React Query's default
+      // ('online') refuses to even send a request while the browser claims to
+      // be offline, and a paused query has no error and no timeout: it sits in
+      // `pending` forever, which is the «Загружаем сетлист…» that never ends
+      // and never sends a single request. The flag is unreliable in exactly
+      // the situations this app runs in — an iOS PWA resumed from background,
+      // a phone handing over between wifi and LTE, a laptop behind a VPN —
+      // and it is stuck on `false` far more often than the network is
+      // actually down. We already have a better answer to "is the server
+      // reachable": ask it. Each request carries its own 20s timeout and
+      // failures surface as `OfflineError`, so the query fails honestly and
+      // the screen offers «Повторить» instead of hanging.
+      networkMode: 'always',
       // Refetching on focus is the cheap half of collaboration — it is what
       // makes another member's edit show up without any polling at all.
       refetchOnWindowFocus: true,
@@ -46,6 +59,10 @@ export const queryClient = new QueryClient({
     },
     mutations: {
       retry: 0,
+      // Same reason as above, and worse in effect: a paused mutation never
+      // runs and never reports, so "создать песню" on a browser that thinks
+      // it is offline is a button that does nothing at all.
+      networkMode: 'always',
     },
   },
 })
